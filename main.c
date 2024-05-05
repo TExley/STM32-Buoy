@@ -55,9 +55,9 @@ const uint32_t MAXIMUM_PRINT_TIMEOUT = 50;
 // Maximum lpuart1 serial data buffer length
 const uint8_t MAX_PRINT_LENGTH = 100;
 
-const uint8_t sample_power = 8; // 8 or less
-const uint8_t sample_value = (uint8_t) ((2 << (uint16_t) sample_power) - 1);
-const uint32_t sample_update_period_ms = 1000 * (1 + (uint32_t) sample_value) / 1100;
+const uint8_t SAMPLE_POWER = 8; // 8 or less
+const uint8_t SAMPLE_VALUE = (uint8_t) ((2 << (uint16_t) SAMPLE_POWER) - 1);
+const uint32_t SAMPLE_UPDATE_PERIOD_MS = 1000 * (1 + (uint32_t) SAMPLE_VALUE) / 1100;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -375,7 +375,7 @@ HAL_StatusTypeDef init_registers()
 {
 	HAL_StatusTypeDef status;
 
-	status = ICM20948_WriteRegister(&REG_GYRO_SMPLRT_DIV, sample_value);
+	status = ICM20948_WriteRegister(&REG_GYRO_SMPLRT_DIV, SAMPLE_VALUE);
 	if (status != HAL_OK)
 		return status;
 
@@ -387,7 +387,7 @@ HAL_StatusTypeDef init_registers()
 	if (status != HAL_OK)
 		return status;
 
-	status = ICM20948_WriteRegister(&REG_ACCEL_SMPLRT_DIV_2, sample_value);
+	status = ICM20948_WriteRegister(&REG_ACCEL_SMPLRT_DIV_2, SAMPLE_VALUE);
 	if (status != HAL_OK)
 		return status;
 
@@ -399,7 +399,7 @@ HAL_StatusTypeDef init_registers()
 	if (status != HAL_OK)
 		return status;
 
-	status = ICM20948_WriteRegister(&REG_I2C_MST_ODR_CONFIG, sample_power);
+	status = ICM20948_WriteRegister(&REG_I2C_MST_ODR_CONFIG, SAMPLE_POWER);
 	if (status != HAL_OK)
 		return status;
 
