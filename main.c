@@ -55,9 +55,13 @@ const uint32_t MAXIMUM_PRINT_TIMEOUT = 50;
 // Maximum lpuart1 serial data buffer length
 const uint8_t MAX_PRINT_LENGTH = 100;
 
+const uint16_t SAMPLE_SIZE = 2048;
 const uint8_t SAMPLE_POWER = 8; // 8 or less
 const uint8_t SAMPLE_VALUE = (uint8_t) ((2 << (uint16_t) SAMPLE_POWER) - 1);
 const uint32_t SAMPLE_UPDATE_PERIOD_MS = 1000 * (1 + (uint32_t) SAMPLE_VALUE) / 1100;
+
+// Gets added to measured gyro int16_vector3 via offset_gyro function
+const int16_vector3 gyro_offset = { 0, -40, -79 }; // Measured for my specific device
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,6 +74,8 @@ void MX_USB_HOST_Process(void);
 /* USER CODE BEGIN PFP */
 HAL_StatusTypeDef init_registers();
 void serial_print(const char[MAX_PRINT_LENGTH]);
+void offset_gyro(int16_vector3* gyro);
+void measure_gyro_offset();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -417,6 +423,31 @@ HAL_StatusTypeDef init_registers()
 void serial_print(const char buffer[MAX_PRINT_LENGTH])
 {
 	HAL_UART_Transmit(&hlpuart1, (uint8_t*) buffer, strlen(buffer), MAXIMUM_PRINT_TIMEOUT);
+}
+
+void offset_gyro(int16_vector3* gyro)
+{
+	gyro->x += gyro_offset.x;
+	gyro->y += gyro_offset.y;
+	gyro->z += gyro_offset.z;
+}
+
+void measure_gyro_offset()
+{
+	int16_vector3 gyro_off;
+
+	serial_print("Measuring gyroscope offset. Keep device still.\r\n");
+
+	if (ICM20948_MeasureGyroOffset((uint32_t) SAMPLE_SIZE, &gyro_off, SAMPLE_UPDATE_PERIOD_MS) != HAL_OK)
+	{
+		serial_print("Couldn't measure gyroscope offset.");
+		Error_Handler();
+	} else
+	{
+		char str[MAX_PRINT_LENGTH];
+		sprintf(str, "Gyro Offset: %hd, %hd, %hd\r\n", gyro_off.x, gyro_off.y, gyro_off.z);
+		serial_print(str);
+	}
 }
 /* USER CODE END 4 */
 
