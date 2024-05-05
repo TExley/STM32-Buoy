@@ -60,6 +60,9 @@ const uint8_t SAMPLE_POWER = 8; // 8 or less
 const uint8_t SAMPLE_VALUE = (uint8_t) ((2 << (uint16_t) SAMPLE_POWER) - 1);
 const uint32_t SAMPLE_UPDATE_PERIOD_MS = 1000 * (1 + (uint32_t) SAMPLE_VALUE) / 1100;
 
+// How long to wait before checking external sensor registers for magnetometer data
+const uint32_t MAG_SAFTEY_WAIT = 10;
+
 // Gets added to measured gyro int16_vector3 via offset_gyro function
 const int16_vector3 gyro_offset = { 0, -40, -79 }; // Measured for my specific device
 /* USER CODE END PV */
@@ -171,6 +174,28 @@ int main(void)
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
+		uint32_t start_time = HAL_GetTick();
+		int16_vector3 accel, gyro, mag;
+
+		ICM20948_ReadAccelGryoRegisters(&accel, &gyro);
+		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
+		ICM20948_ReadMagRegisters(&mag);
+		offset_gyro(&gyro);
+
+		//accel_samples[i] = ICM20948_ScaleSensorVectors(&accel, ACCEL_SENSITIVITY_SCALE_FACTOR);
+		//gyro_samples[i] = ICM20948_ScaleSensorVectors(&gyro, GYRO_SENSITIVITY_SCALE_FACTOR);
+		//mag_sample = ICM20948_ScaleSensorVectors(&gyro, GYRO_SENSITIVITY_SCALE_FACTOR);
+
+		char str[MAX_PRINT_LENGTH];
+		sprintf(str, "%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n",
+				accel.x, accel.y, accel.z,
+				gyro.x, gyro.y, gyro.z,
+				mag.x, mag.y, mag.z);
+		serial_print(str);
+		int64_t wait_time = SAMPLE_UPDATE_PERIOD_MS / 2 + start_time - (int64_t) HAL_GetTick();
+		if (wait_time > 0)
+			HAL_Delay((uint32_t) wait_time);
+
 		/* USER CODE END WHILE */
 		MX_USB_HOST_Process();
 
