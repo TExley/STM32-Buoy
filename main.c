@@ -69,7 +69,8 @@ const int16_vector3 gyro_offset = { 0, -40, -79 }; // Measured for my specific d
 const uint8_t GYRO_FS_SEL = 0; // 0 equivalent to GYRO_FS_SEL_250
 // 131 is typical value for GYRO_FS_SEL = 0 (DS p11)
 // 131 = 0xFFFF / 250 (lowest dps range of gyro)
-const float GYRO_SENSITIVITY_SCALE_FACTOR = 1.f / (131.f / pow(2, GYRO_FS_SEL >> 1));
+const uint8_t GYRO_SENSITIVITY_DIVISOR = 1 << (GYRO_FS_SEL >> 1);
+const float GYRO_SENSITIVITY_SCALE_FACTOR = 1.f / (131.f / GYRO_SENSITIVITY_DIVISOR);
 
 const uint8_t ACCEL_FS_SEL = ACCEL_FS_SEL_4g; // 0 equivalent to ACCEL_FS_SEL_2g
 // 16384 is typical value for ACCEL_FS_SEL = 0 (DS p11)
