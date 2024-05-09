@@ -65,6 +65,10 @@ const uint32_t MAG_SAFTEY_WAIT = 10;
 
 // Gets added to measured gyro int16_vector3 via offset_gyro function
 const int16_vector3 gyro_offset = { 0, -40, -79 }; // Measured for my specific device
+
+const uint8_t GYRO_FS_SEL = 0; // 0 equivalent to GYRO_FS_SEL_250
+
+const uint8_t ACCEL_FS_SEL = ACCEL_FS_SEL_4g; // 0 equivalent to ACCEL_FS_SEL_2g
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -182,9 +186,6 @@ int main(void)
 		ICM20948_ReadMagRegisters(&mag);
 		offset_gyro(&gyro);
 
-		//accel_samples[i] = ICM20948_ScaleSensorVectors(&accel, ACCEL_SENSITIVITY_SCALE_FACTOR);
-		//gyro_samples[i] = ICM20948_ScaleSensorVectors(&gyro, GYRO_SENSITIVITY_SCALE_FACTOR);
-		//mag_sample = ICM20948_ScaleSensorVectors(&gyro, GYRO_SENSITIVITY_SCALE_FACTOR);
 
 		char str[MAX_PRINT_LENGTH];
 		sprintf(str, "%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n",
@@ -192,14 +193,15 @@ int main(void)
 				gyro.x, gyro.y, gyro.z,
 				mag.x, mag.y, mag.z);
 		serial_print(str);
-		int64_t wait_time = SAMPLE_UPDATE_PERIOD_MS / 2 + start_time - (int64_t) HAL_GetTick();
-		if (wait_time > 0)
-			HAL_Delay((uint32_t) wait_time);
 
 		/* USER CODE END WHILE */
 		MX_USB_HOST_Process();
 
 		/* USER CODE BEGIN 3 */
+
+		int64_t wait_time = SAMPLE_UPDATE_PERIOD_MS + start_time - (int64_t) HAL_GetTick();
+		if (wait_time > 0)
+			HAL_Delay((uint32_t) wait_time);
 	}
 	/* USER CODE END 3 */
 }
@@ -410,7 +412,7 @@ HAL_StatusTypeDef init_registers()
 	if (status != HAL_OK)
 		return status;
 
-	status = ICM20948_WriteRegister(&REG_GYRO_CONFIG_1, GYRO_FCHOICE | GYRO_DLPFCFG_6);
+	status = ICM20948_WriteRegister(&REG_GYRO_CONFIG_1, GYRO_FCHOICE | GYRO_DLPFCFG_6 | GYRO_FS_SEL);
 	if (status != HAL_OK)
 		return status;
 
@@ -422,7 +424,7 @@ HAL_StatusTypeDef init_registers()
 	if (status != HAL_OK)
 		return status;
 
-	status = ICM20948_WriteRegister(&REG_ACCEL_CONFIG_1, ACCEL_FCHOICE | ACCEL_FS_SEL_4g | ACCEL_DLPFCFG_7);
+	status = ICM20948_WriteRegister(&REG_ACCEL_CONFIG_1, ACCEL_FCHOICE | ACCEL_FS_SEL | ACCEL_DLPFCFG_7);
 	if (status != HAL_OK)
 		return status;
 
