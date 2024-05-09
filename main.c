@@ -67,8 +67,17 @@ const uint32_t MAG_SAFTEY_WAIT = 10;
 const int16_vector3 gyro_offset = { 0, -40, -79 }; // Measured for my specific device
 
 const uint8_t GYRO_FS_SEL = 0; // 0 equivalent to GYRO_FS_SEL_250
+// 131 is typical value for GYRO_FS_SEL = 0 (DS p11)
+// 131 = 0xFFFF / 250 (lowest dps range of gyro)
+const float GYRO_SENSITIVITY_SCALE_FACTOR = 1.f / (131.f / pow(2, GYRO_FS_SEL >> 1));
 
 const uint8_t ACCEL_FS_SEL = ACCEL_FS_SEL_4g; // 0 equivalent to ACCEL_FS_SEL_2g
+// 16384 is typical value for ACCEL_FS_SEL = 0 (DS p11)
+const float ACCEL_SENSITIVITY_SCALE_FACTOR = 1.f / (16384 >> (ACCEL_FS_SEL >> 1));
+
+// Outputs range from [-32752, 32752] and equivalent values from [-4912, 4912]
+const float MAG_SENSITIVITY_SCALE_FACTOR = 307.f / 2047;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -176,7 +185,14 @@ int main(void)
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	while (1)
+	int16_vector3* accel_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
+	float* wx = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	float* wy = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	float* wz = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	uint16_t* bx = (uint16_t*) malloc(sizeof(uint16_t) * SAMPLE_SIZE);
+	uint16_t* by = (uint16_t*) malloc(sizeof(uint16_t) * SAMPLE_SIZE);
+
+	for (uint16_t i = 0; i < SAMPLE_SIZE; i++)
 	{
 		uint32_t start_time = HAL_GetTick();
 		int16_vector3 accel, gyro, mag;
@@ -184,11 +200,19 @@ int main(void)
 		ICM20948_ReadAccelGryoRegisters(&accel, &gyro);
 		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
 		ICM20948_ReadMagRegisters(&mag);
-		offset_gyro(&gyro);
 
+		offset_gyro(&gyro);
+		float_vector3 gyro_f = ICM20948_ScaleSensorVectors(&gyro, GYRO_SENSITIVITY_SCALE_FACTOR);
+
+		accel_samples[i] = accel;
+		wx[i] = gyro_f.x;
+		wy[i] = gyro_f.y;
+		wz[i] = gyro_f.z;
+		bx[i] = mag.x;
+		by[i] = mag.y;
 
 		char str[MAX_PRINT_LENGTH];
-		sprintf(str, "%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n",
+		sprintf(str, "%d: %d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n", i,
 				accel.x, accel.y, accel.z,
 				gyro.x, gyro.y, gyro.z,
 				mag.x, mag.y, mag.z);
