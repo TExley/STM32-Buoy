@@ -278,12 +278,39 @@ int main(void)
 
 	free(gyro_samples);
 	free(mag_samples);
+
+	// Get roll and pitch from gyro data
+	float* roll = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	float* pitch = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+	integrate(roll, wx);
+	integrate(pitch, wy);
+
+	float* droll = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	float* dpitch = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+	for (uint8_t i = 0; i < INTEGRAL_REPETITIONS; i++)
+	{
+		for (int j = 0; j < SAMPLE_SIZE; j++)
+		{
+			droll[j] = wx[j] + tanf(pitch[j]) * (wy[j]*sinf(roll[j]) + wz[j]*cosf(roll[j]));
+			dpitch[j] = wy[j]*cosf(roll[j]) - wz[j]*sinf(roll[j]);
+		}
+
+		integrate(roll, droll);
+		integrate(pitch, dpitch);
+	}
+
+	free(droll);
+	free(dpitch);
 	free(wx);
 	free(wy);
 	free(wz);
 	free(bz);
 	free(bx);
 	free(by);
+	free(roll);
+	free(pitch);
 	free(accel_samples);
 }
 
