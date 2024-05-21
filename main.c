@@ -131,8 +131,8 @@ int main(void)
 	MX_LPUART1_UART_Init();
 	MX_USB_HOST_Init();
 	MX_I2C1_Init();
-	/* USER CODE BEGIN 2 */
 
+	/* USER CODE BEGIN 2 */
 	HAL_StatusTypeDef status;
 	char str[MAX_PRINT_LENGTH];
 
