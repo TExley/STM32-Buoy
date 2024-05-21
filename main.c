@@ -306,12 +306,49 @@ int main(void)
 	free(wx);
 	free(wy);
 	free(wz);
+
+	// Get azimuth from roll, pitch, and mag data
+	float* azimuth = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	// And get deck north and east slopes
+	float* zx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // East
+	float* zy = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // North
+
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+	{
+		float cosP = cosf(pitch[i]);
+		float sinP = sinf(pitch[i]);
+		float cosR = cosf(roll[i]);
+		float sinR = sinf(roll[i]);
+
+		float cosA = (bx[i] - BEZ * sinP) / (BEY * cosP);
+		float sinA = ((BEY * sinP * cosA - BEZ * cosP) * sinR - by[i]) / (BEY * cosR);
+
+		azimuth[i] = atan2f(sinA,  cosA) + B_DECLINATION;
+
+		// Recalculate for true-north azimuth
+		cosA = cosf(azimuth[i]);
+		sinA = sinf(azimuth[i]);
+
+		zx[i] = sinP * sinA / cosP - sinR * cosA / (cosP * cosR);
+		zy[i] = sinP * cosA / cosP + sinR * sinA / (cosP * cosR);
+	}
 	free(bz);
+
+	serial_print("\r\n\r\nRoll,\t\tPitch,\t\tBx\t\tBy\t\tAzimuth,\tEast Slope,\tNorth Slope\r\n");
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+	{
+		sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f,\t%f,\t%f\r\n", pitch[i], roll[i], bx[i], by[i], azimuth[i] * 180 / M_PI, zx[i], zy[i]);
+		serial_print(str);
+	}
+
 	free(bx);
 	free(by);
 	free(roll);
 	free(pitch);
 	free(accel_samples);
+	free(azimuth);
+	free(zx);
+	free(zy);
 }
 
 /**
