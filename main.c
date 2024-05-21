@@ -76,9 +76,26 @@ const uint8_t ACCEL_FS_SEL = ACCEL_FS_SEL_4g; // 0 equivalent to ACCEL_FS_SEL_2g
 // 16384 is typical value for ACCEL_FS_SEL = 0 (DS p11)
 const float ACCEL_SENSITIVITY_SCALE_FACTOR = 1.f / (16384 >> (ACCEL_FS_SEL >> 1));
 
-// Outputs range from [-32752, 32752] and equivalent values from [-4912, 4912]
-const float MAG_SENSITIVITY_SCALE_FACTOR = 307.f / 2047;
+// Outputs range from [-32752, 32752] and converts to equivalent values from [-4912, 4912]
+// In magnetic flux density uT
+const float MAG_SENSITIVITY_SCALE_FACTOR = 0.15;
 
+// Number of times to repeat integrating (values should converge very quickly)
+const uint8_t INTEGRAL_REPETITIONS = 2;
+
+const float M_2PI = 2 * M_PI;
+const float M_2PI_SAMPLESSIZE = 2 * M_PI / SAMPLE_SIZE;
+
+// Earth-fixed local magnetic field in [uT]
+// https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm
+// For Santa Rosa CA with WMM model on 5/14/24
+const float BEY = 22.1544; // Uncertainty of .131uT and change of -0.0344uT/yr
+const float BEZ = 42.1813; // Uncertainty of .157uT and change of -0.0981uT/yr
+
+// Magnetic delcination in [rad]
+// https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#declination
+// For Santa Rosa CA with WMM model on 5/14/24 with estimated 5 arcminute change west per year
+const float B_DECLINATION = 0.230674349; // 13 degrees 13 arcminutes east +- 22 arcminutes
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
