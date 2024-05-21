@@ -99,6 +99,8 @@ const float BEZ = 42.1813; // Uncertainty of .157uT and change of -0.0981uT/yr
 // https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#declination
 // For Santa Rosa CA with WMM model on 5/14/24 with estimated 5 arcminute change west per year
 const float B_DECLINATION = 0.230674349; // 13 degrees 13 arcminutes east +- 22 arcminutes
+
+typedef enum print_option { DONT_PRINT, PRINT } print_option;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -109,12 +111,16 @@ static void MX_I2C1_Init(void);
 void MX_USB_HOST_Process(void);
 
 /* USER CODE BEGIN PFP */
+void device_init();
 HAL_StatusTypeDef init_registers();
 void serial_print(const char[MAX_PRINT_LENGTH]);
 void offset_gyro(int16_vector3* gyro);
 void measure_gyro_offset();
 void fft(float complex* f, uint16_t size);
 void integrate(float* f, float* df);
+void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* wz, float* bx, float* by, print_option option);
+void integrate_w(float* roll, float* pitch, float* wx, float* wy, float* wz, print_option option);
+void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float* pitch, float* bx, float* by, print_option option);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -155,67 +161,12 @@ int main(void)
 	MX_I2C1_Init();
 
 	/* USER CODE BEGIN 2 */
-	HAL_StatusTypeDef status;
-	char str[MAX_PRINT_LENGTH];
+	device_init();
+	/* USER CODE END 2 */
 
-	serial_print("\r\n\r\n\r\n\r\n\r\nNew Session\r\n");
-
-	status = ICM20948_Init(&hi2c1, SDO_LOW);
-	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not initialize ICM20948.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Initialized ICM20948.\r\n");
-
-	status = ICM20948_Reset();
-	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not reset ICM20948.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Reset ICM20948.\r\n");
-
-	status = ICM20948_Wake();
-	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not wake ICM20948.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Woke ICM20948.\r\n");
-
-	status = AK09916_Init();
-	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not find AK09916.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Initialized AK09916.\r\n");
-
-	status = init_registers();
-	if (status != HAL_OK)
-	{
-		sprintf(str, "Could initialize ICM20948 registers.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Initialized ICM20948 registers.\r\n");
-	sprintf(str, "Sample rate: %lums, %f/s\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
-	serial_print(str);
-	sprintf(str, "Accel scale: %f\r\nGyro scale: %f\n\rMag scale: %f\r\n",
-			ACCEL_SENSITIVITY_SCALE_FACTOR, GYRO_SENSITIVITY_SCALE_FACTOR, MAG_SENSITIVITY_SCALE_FACTOR);
-	serial_print(str);
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
 	int16_vector3* accel_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
-	int16_vector3* gyro_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
-	int16_vector3* mag_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
 
 	float* wx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.x in rad/s
 	float* wy = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.y in rad/s
@@ -223,86 +174,15 @@ int main(void)
 
 	float* bx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.x in rad/s
 	float* by = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.y in rad/s
-	float* bz = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.z in rad/s
 
-	ICM20948_ReadAccelGryoRegisters(accel_samples, gyro_samples);
-	HAL_Delay(STARTUP_DELAY);
-
-	serial_print("Data collection starting.\r\n");
-
-	for (uint16_t i = 0; i < SAMPLE_SIZE; i++)
-	{
-		uint32_t start_time = HAL_GetTick();
-
-		ICM20948_ReadAccelGryoRegisters(accel_samples + i, gyro_samples + i);
-
-		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
-		ICM20948_ReadMagRegisters(mag_samples + i);
-
-		// Mast down vertical acceleration points down through breakout board
-		accel_samples[i].z = -accel_samples[i].z;
-
-		// Manually corrects sensor and scales to rad/s
-		offset_gyro(gyro_samples + i);
-		wx[i] = gyro_samples[i].x * GYRO_SENSITIVITY_SCALE_FACTOR;
-		wy[i] = gyro_samples[i].y * GYRO_SENSITIVITY_SCALE_FACTOR;
-		wz[i] = gyro_samples[i].z * GYRO_SENSITIVITY_SCALE_FACTOR;
-
-		// Converts to magnetic flux density [uT]
-		bx[i] = mag_samples[i].x * MAG_SENSITIVITY_SCALE_FACTOR;
-		by[i] = mag_samples[i].y * MAG_SENSITIVITY_SCALE_FACTOR;
-		bz[i] = mag_samples[i].z * MAG_SENSITIVITY_SCALE_FACTOR;
-
-		/* USER CODE END WHILE */
-		MX_USB_HOST_Process();
-
-		/* USER CODE BEGIN 3 */
-
-		int64_t wait_time = SAMPLE_PERIOD_MS + start_time - (int64_t) HAL_GetTick();
-		if (wait_time > 0)
-			HAL_Delay((uint32_t) wait_time);
-	}
-
-	serial_print("Data collection done.\r\n");
-
-	// Print sensor data as read
-	serial_print("\r\nIndex,\tAccelX,\tAccelY,\tAccelZ,\tGyroX,\tGyroY,\tGyroZ,\tMagX,\tMagY,\tMagZ\r\n");
-	for (int i = 0; i < SAMPLE_SIZE; i++)
-	{
-		sprintf(str, "%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n", i,
-			accel_samples[i].x, accel_samples[i].y, accel_samples[i].z,
-			gyro_samples[i].x, gyro_samples[i].y, gyro_samples[i].z,
-			mag_samples[i].x, mag_samples[i].y, mag_samples[i].z);
-		serial_print(str);
-	}
-
-	free(gyro_samples);
-	free(mag_samples);
+	collect_samples(accel_samples, wx, wy, wz, bx, by, DONT_PRINT);
 
 	// Get roll and pitch from gyro data
 	float* roll = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 	float* pitch = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
-	integrate(roll, wx);
-	integrate(pitch, wy);
+	integrate_w(roll, pitch, wx, wy, wz, DONT_PRINT);
 
-	float* droll = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
-	float* dpitch = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
-
-	for (uint8_t i = 0; i < INTEGRAL_REPETITIONS; i++)
-	{
-		for (int j = 0; j < SAMPLE_SIZE; j++)
-		{
-			droll[j] = wx[j] + tanf(pitch[j]) * (wy[j]*sinf(roll[j]) + wz[j]*cosf(roll[j]));
-			dpitch[j] = wy[j]*cosf(roll[j]) - wz[j]*sinf(roll[j]);
-		}
-
-		integrate(roll, droll);
-		integrate(pitch, dpitch);
-	}
-
-	free(droll);
-	free(dpitch);
 	free(wx);
 	free(wy);
 	free(wz);
@@ -313,43 +193,24 @@ int main(void)
 	float* zx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // East
 	float* zy = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // North
 
-	for (int i = 0; i < SAMPLE_SIZE; i++)
-	{
-		float cosP = cosf(pitch[i]);
-		float sinP = sinf(pitch[i]);
-		float cosR = cosf(roll[i]);
-		float sinR = sinf(roll[i]);
-
-		float cosA = (bx[i] - BEZ * sinP) / (BEY * cosP);
-		float sinA = ((BEY * sinP * cosA - BEZ * cosP) * sinR - by[i]) / (BEY * cosR);
-
-		azimuth[i] = atan2f(sinA,  cosA) + B_DECLINATION;
-
-		// Recalculate for true-north azimuth
-		cosA = cosf(azimuth[i]);
-		sinA = sinf(azimuth[i]);
-
-		zx[i] = sinP * sinA / cosP - sinR * cosA / (cosP * cosR);
-		zy[i] = sinP * cosA / cosP + sinR * sinA / (cosP * cosR);
-	}
-	free(bz);
-
-	serial_print("\r\n\r\nRoll,\t\tPitch,\t\tBx\t\tBy\t\tAzimuth,\tEast Slope,\tNorth Slope\r\n");
-	for (int i = 0; i < SAMPLE_SIZE; i++)
-	{
-		sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f,\t%f,\t%f\r\n", pitch[i], roll[i], bx[i], by[i], azimuth[i] * 180 / M_PI, zx[i], zy[i]);
-		serial_print(str);
-	}
+	calculate_headings(azimuth, zx, zy, roll, pitch, bx, by, DONT_PRINT);
 
 	free(bx);
 	free(by);
 	free(roll);
 	free(pitch);
 	free(accel_samples);
+
 	free(azimuth);
 	free(zx);
 	free(zy);
-  /* USER CODE END 3 */
+
+	/* USER CODE END WHILE */
+	MX_USB_HOST_Process();
+
+	/* USER CODE BEGIN 3 */
+
+	/* USER CODE END 3 */
 }
 
 /**
@@ -550,6 +411,67 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void device_init()
+{
+	HAL_StatusTypeDef status;
+		char str[MAX_PRINT_LENGTH];
+
+		serial_print("\r\n\r\n\r\n\r\n\r\nNew Session\r\n");
+
+		status = ICM20948_Init(&hi2c1, SDO_LOW);
+		if (status != HAL_OK)
+		{
+			sprintf(str, "Could not initialize ICM20948.\r\nStatus = %d\r\n", status);
+			serial_print(str);
+			Error_Handler();
+		}
+		serial_print("Initialized ICM20948.\r\n");
+
+		status = ICM20948_Reset();
+		if (status != HAL_OK)
+		{
+			sprintf(str, "Could not reset ICM20948.\r\nStatus = %d\r\n", status);
+			serial_print(str);
+			Error_Handler();
+		}
+		serial_print("Reset ICM20948.\r\n");
+
+		status = ICM20948_Wake();
+		if (status != HAL_OK)
+		{
+			sprintf(str, "Could not wake ICM20948.\r\nStatus = %d\r\n", status);
+			serial_print(str);
+			Error_Handler();
+		}
+		serial_print("Woke ICM20948.\r\n");
+
+		status = AK09916_Init();
+		if (status != HAL_OK)
+		{
+			sprintf(str, "Could not find AK09916.\r\nStatus = %d\r\n", status);
+			serial_print(str);
+			Error_Handler();
+		}
+		serial_print("Initialized AK09916.\r\n");
+
+		status = init_registers();
+		if (status != HAL_OK)
+		{
+			sprintf(str, "Could initialize ICM20948 registers.\r\nStatus = %d\r\n", status);
+			serial_print(str);
+			Error_Handler();
+		}
+		serial_print("Initialized ICM20948 registers.\r\n");
+
+
+		sprintf(str, "Sample rate: %lums, %f/s\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
+		serial_print(str);
+
+		sprintf(str, "Accel scale: %f\r\nGyro scale: %f\n\rMag scale: %f\r\n",
+				ACCEL_SENSITIVITY_SCALE_FACTOR, GYRO_SENSITIVITY_SCALE_FACTOR, MAG_SENSITIVITY_SCALE_FACTOR);
+		serial_print(str);
+}
+
 HAL_StatusTypeDef init_registers()
 {
 	HAL_StatusTypeDef status;
@@ -700,6 +622,135 @@ void integrate(float* f, float* df)
 
 	for (int i = 0; i < SAMPLE_SIZE; i++)
 		f[i] -= average;
+}
+
+void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* wz, float* bx, float* by, print_option option)
+{
+	int16_vector3* gyro_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
+	int16_vector3* mag_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
+
+	// Read once to get values updating
+	ICM20948_ReadAccelGryoRegisters(accel_samples, gyro_samples);
+	HAL_Delay(STARTUP_DELAY);
+
+	serial_print("Data collection starting.\r\n");
+
+	for (uint16_t i = 0; i < SAMPLE_SIZE; i++)
+	{
+		uint32_t start_time = HAL_GetTick();
+
+		ICM20948_ReadAccelGryoRegisters(accel_samples + i, gyro_samples + i);
+
+		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
+		ICM20948_ReadMagRegisters(mag_samples + i);
+
+		// Mast down vertical acceleration points down through breakout board
+		accel_samples[i].z = -accel_samples[i].z;
+
+		// Manually corrects sensor and scales to rad/s
+		offset_gyro(gyro_samples + i);
+		wx[i] = gyro_samples[i].x * GYRO_SENSITIVITY_SCALE_FACTOR;
+		wy[i] = gyro_samples[i].y * GYRO_SENSITIVITY_SCALE_FACTOR;
+		wz[i] = gyro_samples[i].z * GYRO_SENSITIVITY_SCALE_FACTOR;
+
+		// Converts to magnetic flux density [uT]
+		bx[i] = mag_samples[i].x * MAG_SENSITIVITY_SCALE_FACTOR;
+		by[i] = mag_samples[i].y * MAG_SENSITIVITY_SCALE_FACTOR;
+
+		int64_t wait_time = SAMPLE_PERIOD_MS + start_time - (int64_t) HAL_GetTick();
+		if (wait_time > 0)
+			HAL_Delay((uint32_t) wait_time);
+	}
+
+	serial_print("Data collection done.\r\n");
+
+	if (option == PRINT)
+	{
+		char str[MAX_PRINT_LENGTH];
+
+		serial_print("\r\nIndex,\tAccelX,\tAccelY,\tAccelZ,\tGyroX,\tGyroY,\tGyroZ,\tMagX,\tMagY,\tMagZ\r\n");
+		for (int i = 0; i < SAMPLE_SIZE; i++)
+		{
+			sprintf(str, "%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n", i,
+				accel_samples[i].x, accel_samples[i].y, accel_samples[i].z,
+				gyro_samples[i].x, gyro_samples[i].y, gyro_samples[i].z,
+				mag_samples[i].x, mag_samples[i].y, mag_samples[i].z);
+			serial_print(str);
+		}
+	}
+
+	free(gyro_samples);
+	free(mag_samples);
+}
+
+void integrate_w(float* roll, float* pitch, float* wx, float* wy, float* wz, print_option option)
+{
+	integrate(roll, wx);
+	integrate(pitch, wy);
+
+	float* droll = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	float* dpitch = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+	for (uint8_t i = 0; i < INTEGRAL_REPETITIONS; i++)
+	{
+		for (int j = 0; j < SAMPLE_SIZE; j++)
+		{
+			droll[j] = wx[j] + tanf(pitch[j]) * (wy[j]*sinf(roll[j]) + wz[j]*cosf(roll[j]));
+			dpitch[j] = wy[j]*cosf(roll[j]) - wz[j]*sinf(roll[j]);
+		}
+
+		integrate(roll, droll);
+		integrate(pitch, dpitch);
+	}
+
+	free(droll);
+	free(dpitch);
+
+	if (option == PRINT)
+	{
+		char str[MAX_PRINT_LENGTH];
+
+		serial_print("\r\nRoll,\t\tPitch,\t\tWx\t\tWy\t\tWz\r\n");
+		for (int i = 0; i < SAMPLE_SIZE; i++)
+		{
+			sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f\r\n", pitch[i] * 180 / M_PI, roll[i] * 180 / M_PI, wx[i], wy[i], wz[i]);
+			serial_print(str);
+		}
+	}
+}
+
+void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float* pitch, float* bx, float* by, print_option option)
+{
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+	{
+		float cosP = cosf(pitch[i]);
+		float sinP = sinf(pitch[i]);
+		float cosR = cosf(roll[i]);
+		float sinR = sinf(roll[i]);
+
+		float cosA = (bx[i] - BEZ * sinP) / (BEY * cosP);
+		float sinA = ((BEY * sinP * cosA - BEZ * cosP) * sinR - by[i]) / (BEY * cosR);
+
+		azimuth[i] = atan2f(sinA,  cosA) + B_DECLINATION;
+
+		// Recalculate for true-north azimuth
+		cosA = cosf(azimuth[i]);
+		sinA = sinf(azimuth[i]);
+
+		zx[i] = sinP * sinA / cosP - sinR * cosA / (cosP * cosR);
+		zy[i] = sinP * cosA / cosP + sinR * sinA / (cosP * cosR);
+	}
+
+	if (option == PRINT)
+	{
+		char str[MAX_PRINT_LENGTH];
+		serial_print("\r\nBx\t\tBy\t\tAzimuth,\tEast Slope,\tNorth Slope\r\n");
+		for (int i = 0; i < SAMPLE_SIZE; i++)
+		{
+			sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f\r\n", bx[i], by[i], azimuth[i] * 180 / M_PI, zx[i], zy[i]);
+			serial_print(str);
+		}
+	}
 }
 /* USER CODE END 4 */
 
