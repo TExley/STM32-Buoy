@@ -26,6 +26,8 @@
 #include "string.h"
 #include "stdio.h"
 #include "stdlib.h"
+#include "math.h"
+#include "complex.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,6 +61,7 @@ const uint16_t SAMPLE_SIZE = 2048;
 const uint8_t SAMPLE_POWER = 8; // 8 or less
 const uint8_t SAMPLE_VALUE = (uint8_t) ((2 << (uint16_t) SAMPLE_POWER) - 1);
 const uint32_t SAMPLE_PERIOD_MS = 10 * (1 + (uint32_t) SAMPLE_VALUE) / 11;
+const float SAMPLE_FREQUENCY = 11000.f / (10 * (1 + (uint32_t) SAMPLE_VALUE));
 
 // How long to wait before checking external sensor registers for magnetometer data
 const uint32_t MAG_SAFTEY_WAIT = 10;
@@ -70,7 +73,7 @@ const uint8_t GYRO_FS_SEL = 0; // 0 equivalent to GYRO_FS_SEL_250
 // 131 is typical value for GYRO_FS_SEL = 0 (DS p11)
 // 131 = 0xFFFF / 250 (lowest dps range of gyro)
 const uint8_t GYRO_SENSITIVITY_DIVISOR = 1 << (GYRO_FS_SEL >> 1);
-const float GYRO_SENSITIVITY_SCALE_FACTOR = 1.f / (131.f / GYRO_SENSITIVITY_DIVISOR);
+const float GYRO_SENSITIVITY_SCALE_FACTOR = M_PI / (180 * 131.f / GYRO_SENSITIVITY_DIVISOR);
 
 const uint8_t ACCEL_FS_SEL = ACCEL_FS_SEL_4g; // 0 equivalent to ACCEL_FS_SEL_2g
 // 16384 is typical value for ACCEL_FS_SEL = 0 (DS p11)
@@ -110,6 +113,8 @@ HAL_StatusTypeDef init_registers();
 void serial_print(const char[MAX_PRINT_LENGTH]);
 void offset_gyro(int16_vector3* gyro);
 void measure_gyro_offset();
+void fft(float complex* f, uint16_t size);
+void integrate(float* f, float* df);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -551,6 +556,85 @@ void measure_gyro_offset()
 		sprintf(str, "Gyro Offset: %hd, %hd, %hd\r\n", gyro_off.x, gyro_off.y, gyro_off.z);
 		serial_print(str);
 	}
+}
+
+/*
+ * Computes the fft of f and stores the result in f
+ * size = 2^n where n is a positive non-zero integer
+ */
+void fft(float complex* f, uint16_t size)
+{
+	if (size == 2)
+	{
+		float complex F_even = f[0];
+		f[0] = F_even + f[1];
+		f[1] = F_even - f[1];
+		return;
+	}
+
+	uint16_t size_half = size >> 1;
+
+	// Compute even half of f
+	float complex* F_even = (float complex*) malloc(sizeof(float complex) * size_half);
+	for (uint16_t i = 0; i < size_half; i++)
+		F_even[i] = f[2 * i];
+	fft(F_even, size_half);
+
+	// Compute odd half of f
+	float complex* F_odd = (float complex*) malloc(sizeof(float complex) * size_half);
+	for (uint16_t i = 0; i < size_half; i++)
+		F_odd[i] = f[2 * i + 1];
+	fft(F_odd, size_half);
+
+	// f = fft(f)
+	float complex w = cexpf(-M_2PI * I / size);
+	for (uint16_t i = 0; i < size_half; i++)
+	{
+		float complex wi = cpowf(w, i)*F_odd[i];
+		f[i] = F_even[i] + wi;
+		f[i + size_half] = F_even[i] - wi;
+	}
+	free(F_even);
+	free(F_odd);
+}
+
+/*
+ * Populates f with the integral of df
+ * f is defined to have an average of 0
+ * f and df must be of length SAMPLE_SIZE
+ */
+void integrate(float* f, float* df)
+{
+	float complex* f_complex = (float complex*) malloc(sizeof(float complex) * SAMPLE_SIZE);
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+		f_complex[i] = df[i];
+
+	fft(f_complex, SAMPLE_SIZE);
+
+	// Don't need to /SAMPLE_SIZE for rest of values since it would cancel later
+	// Also f_complex[0] only has a real component
+	float f_0 = crealf(f_complex[0]) / SAMPLE_SIZE;
+
+	long double sum = 0;
+
+	for (int k = 0; k < SAMPLE_SIZE; k++)
+	{
+		f[k] = 0;
+		for (int n = 1; n < SAMPLE_SIZE / 2; n++)
+			f[k] += (crealf(f_complex[n]) * sinf(M_2PI_SAMPLESSIZE * k * n)
+				 +   cimagf(f_complex[n]) * cosf(M_2PI_SAMPLESSIZE * k * n)) / n;
+		f[k] /= M_PI;
+		f[k] += f_0 * k;
+		f[k] /= SAMPLE_FREQUENCY;
+		sum += f[k];
+	}
+
+	free(f_complex);
+
+	float average = sum / SAMPLE_SIZE;
+
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+		f[i] -= average;
 }
 /* USER CODE END 4 */
 
