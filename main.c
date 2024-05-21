@@ -180,7 +180,7 @@ int main(void)
 		serial_print(str);
 		Error_Handler();
 	}
-	serial_print("Woke ICM20948.\r\nax, ay, az, gx, gy, gz, mx, my, mz\r\n");
+	serial_print("Woke ICM20948.\r\n");
 
 	status = AK09916_Init();
 	if (status != HAL_OK)
@@ -199,10 +199,15 @@ int main(void)
 		Error_Handler();
 	}
 	serial_print("Initialized ICM20948 registers.\r\n");
-	/* USER CODE END 2 */
+	sprintf(str, "Sample rate: %lums, %f/s\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
+	serial_print(str);
+	sprintf(str, "Accel scale: %f\r\nGyro scale: %f\n\rMag scale: %f\r\n",
+			ACCEL_SENSITIVITY_SCALE_FACTOR, GYRO_SENSITIVITY_SCALE_FACTOR, MAG_SENSITIVITY_SCALE_FACTOR);
+	serial_print(str);
+  /* USER CODE END 2 */
 
-	/* Infinite loop */
-	/* USER CODE BEGIN WHILE */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
 	int16_vector3* accel_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
 	float* wx = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 	float* wy = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
