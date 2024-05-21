@@ -50,7 +50,7 @@ UART_HandleTypeDef hlpuart1;
 
 /* USER CODE BEGIN PV */
 // Maximum time-out to wait for any print ACK
-const uint32_t MAXIMUM_PRINT_TIMEOUT = 50;
+const uint32_t MAXIMUM_PRINT_TIMEOUT = 100;
 
 // Maximum lpuart1 serial data buffer length
 const uint8_t MAX_PRINT_LENGTH = 100;
