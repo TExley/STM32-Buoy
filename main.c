@@ -349,6 +349,7 @@ int main(void)
 	free(azimuth);
 	free(zx);
 	free(zy);
+  /* USER CODE END 3 */
 }
 
 /**
