@@ -610,7 +610,7 @@ void measure_gyro_offset()
 
 	serial_print("Measuring gyroscope offset. Keep device still.\r\n");
 
-	if (ICM20948_MeasureGyroOffset((uint32_t) SAMPLE_SIZE, &gyro_off, SAMPLE_UPDATE_PERIOD_MS) != HAL_OK)
+	if (ICM20948_MeasureGyroOffset((uint32_t) SAMPLE_SIZE, &gyro_off, SAMPLE_PERIOD_MS) != HAL_OK)
 	{
 		serial_print("Couldn't measure gyroscope offset.");
 		Error_Handler();
