@@ -58,7 +58,7 @@ const uint8_t MAX_PRINT_LENGTH = 100;
 const uint16_t SAMPLE_SIZE = 2048;
 const uint8_t SAMPLE_POWER = 8; // 8 or less
 const uint8_t SAMPLE_VALUE = (uint8_t) ((2 << (uint16_t) SAMPLE_POWER) - 1);
-const uint32_t SAMPLE_UPDATE_PERIOD_MS = 1000 * (1 + (uint32_t) SAMPLE_VALUE) / 1100;
+const uint32_t SAMPLE_PERIOD_MS = 10 * (1 + (uint32_t) SAMPLE_VALUE) / 11;
 
 // How long to wait before checking external sensor registers for magnetometer data
 const uint32_t MAG_SAFTEY_WAIT = 10;
@@ -209,48 +209,77 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	int16_vector3* accel_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
-	float* wx = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
-	float* wy = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
-	float* wz = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
-	uint16_t* bx = (uint16_t*) malloc(sizeof(uint16_t) * SAMPLE_SIZE);
-	uint16_t* by = (uint16_t*) malloc(sizeof(uint16_t) * SAMPLE_SIZE);
+	int16_vector3* gyro_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
+	int16_vector3* mag_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
+
+	float* wx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.x in rad/s
+	float* wy = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.y in rad/s
+	float* wz = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.z in rad/s
+
+	float* bx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.x in rad/s
+	float* by = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.y in rad/s
+	float* bz = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.z in rad/s
+
+	ICM20948_ReadAccelGryoRegisters(accel_samples, gyro_samples);
+	HAL_Delay(STARTUP_DELAY);
+
+	serial_print("Data collection starting.\r\n");
 
 	for (uint16_t i = 0; i < SAMPLE_SIZE; i++)
 	{
 		uint32_t start_time = HAL_GetTick();
-		int16_vector3 accel, gyro, mag;
 
-		ICM20948_ReadAccelGryoRegisters(&accel, &gyro);
+		ICM20948_ReadAccelGryoRegisters(accel_samples + i, gyro_samples + i);
+
 		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
-		ICM20948_ReadMagRegisters(&mag);
+		ICM20948_ReadMagRegisters(mag_samples + i);
 
-		offset_gyro(&gyro);
-		float_vector3 gyro_f = ICM20948_ScaleSensorVectors(&gyro, GYRO_SENSITIVITY_SCALE_FACTOR);
+		// Mast down vertical acceleration points down through breakout board
+		accel_samples[i].z = -accel_samples[i].z;
 
-		accel_samples[i] = accel;
-		wx[i] = gyro_f.x;
-		wy[i] = gyro_f.y;
-		wz[i] = gyro_f.z;
-		bx[i] = mag.x;
-		by[i] = mag.y;
+		// Manually corrects sensor and scales to rad/s
+		offset_gyro(gyro_samples + i);
+		wx[i] = gyro_samples[i].x * GYRO_SENSITIVITY_SCALE_FACTOR;
+		wy[i] = gyro_samples[i].y * GYRO_SENSITIVITY_SCALE_FACTOR;
+		wz[i] = gyro_samples[i].z * GYRO_SENSITIVITY_SCALE_FACTOR;
 
-		char str[MAX_PRINT_LENGTH];
-		sprintf(str, "%d: %d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n", i,
-				accel.x, accel.y, accel.z,
-				gyro.x, gyro.y, gyro.z,
-				mag.x, mag.y, mag.z);
-		serial_print(str);
+		// Converts to magnetic flux density [uT]
+		bx[i] = mag_samples[i].x * MAG_SENSITIVITY_SCALE_FACTOR;
+		by[i] = mag_samples[i].y * MAG_SENSITIVITY_SCALE_FACTOR;
+		bz[i] = mag_samples[i].z * MAG_SENSITIVITY_SCALE_FACTOR;
 
 		/* USER CODE END WHILE */
 		MX_USB_HOST_Process();
 
 		/* USER CODE BEGIN 3 */
 
-		int64_t wait_time = SAMPLE_UPDATE_PERIOD_MS + start_time - (int64_t) HAL_GetTick();
+		int64_t wait_time = SAMPLE_PERIOD_MS + start_time - (int64_t) HAL_GetTick();
 		if (wait_time > 0)
 			HAL_Delay((uint32_t) wait_time);
 	}
-	/* USER CODE END 3 */
+
+	serial_print("Data collection done.\r\n");
+
+	// Print sensor data as read
+	serial_print("\r\nIndex,\tAccelX,\tAccelY,\tAccelZ,\tGyroX,\tGyroY,\tGyroZ,\tMagX,\tMagY,\tMagZ\r\n");
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+	{
+		sprintf(str, "%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n", i,
+			accel_samples[i].x, accel_samples[i].y, accel_samples[i].z,
+			gyro_samples[i].x, gyro_samples[i].y, gyro_samples[i].z,
+			mag_samples[i].x, mag_samples[i].y, mag_samples[i].z);
+		serial_print(str);
+	}
+
+	free(gyro_samples);
+	free(mag_samples);
+	free(wx);
+	free(wy);
+	free(wz);
+	free(bz);
+	free(bx);
+	free(by);
+	free(accel_samples);
 }
 
 /**
