@@ -102,6 +102,19 @@ const float BEZ = 42.1813; // Uncertainty of .157uT and change of -0.0981uT/yr
  */
  const float B_DECLINATION = 0.230674349; // 13 degrees 13 arcminutes east +- 22 arcminutes
 
+/* These can be determined by spinning the buoy at constant rate so
+ *  roll and pitch are both 0 and A can be determined by gyro then,
+ *  Bi = Bi0 + (BEY*cosA)*Bi1 + (-BEY*sinA)*Bi2 and solve for Bij that minimize error
+ * I can't, so I will instead align B1 to known compass headings to solve for Bij.
+ * In python: Bijs = numpy.linalg.pinv(X)@Bi where X is the Nx3 matrix of Bij coefficients
+ */
+const float B10 = -2.21720753, 	// residual hull magnetic effect (bow) 9.36
+			B11 = 1.09226593, 	// induced hull magnetic effect (bow) 0.757
+			B12 = -0.12668346, 	// induced hull magnetic effect (bow) 0.065
+			B20 = 8.57181184, 	// residual hull magnetic effect (starboard) 4.27
+			B21 = 0.02056748, 	// induced hull magnetic effect (starboard) -0.0115
+			B22 = 1.07178173; 	// induced hull magnetic effect (starboard) 1.15
+
 typedef enum print_option { DONT_PRINT, PRINT } print_option;
 /* USER CODE END PV */
 
@@ -734,8 +747,18 @@ void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float
 		float cosR = cosf(roll[i]);
 		float sinR = sinf(roll[i]);
 
-		float cosA = (bx[i] - BEZ * sinP) / (BEY * cosP);
-		float sinA = ((BEY * sinP * cosA - BEZ * cosP) * sinR - by[i]) / (BEY * cosR);
+		// Coefficients in a*sinA + b*cosA = c;
+		float a = -BEY*B12*cosR;
+		float b = BEY*(B11*cosP + B12*sinP*sinR);
+		float c = bx[i] - B10 - BEZ*(B11*sinP - B12*cosP*sinR);
+
+		// Coefficients in d*sinA + e*cosA = f;
+		float d = -BEY*B22*cosR;
+		float e = BEY*(B21*cosP + B22*sinP*sinR);
+		float f = by[i] - B20 - BEZ*(B21*sinP - B22*cosP*sinR);
+
+		float sinA = (c*e - b*f) / (a*e - b*d);
+		float cosA = (a*f - c*d) / (a*e - b*d);
 
 		azimuth[i] = atan2f(sinA,  cosA) + B_DECLINATION;
 
