@@ -648,6 +648,8 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
 		ICM20948_ReadMagRegisters(mag_samples + i);
 
+		// Acceleration should be positive when moving starboard
+		accel_samples[i].y = -accel_samples[i].y;
 		// Mast down vertical acceleration points down through breakout board
 		accel_samples[i].z = -accel_samples[i].z;
 
