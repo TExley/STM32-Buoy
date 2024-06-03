@@ -89,16 +89,18 @@ const uint8_t INTEGRAL_REPETITIONS = 2;
 const float M_2PI = 2 * M_PI;
 const float M_2PI_SAMPLESSIZE = 2 * M_PI / SAMPLE_SIZE;
 
-// Earth-fixed local magnetic field in [uT]
-// https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm
-// For Santa Rosa CA with WMM model on 5/14/24
+/** Earth-fixed local magnetic field in [uT]
+ * https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm
+ * For Santa Rosa CA with WMM model on 5/14/24
+ */
 const float BEY = 22.1544; // Uncertainty of .131uT and change of -0.0344uT/yr
 const float BEZ = 42.1813; // Uncertainty of .157uT and change of -0.0981uT/yr
 
-// Magnetic delcination in [rad]
-// https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#declination
-// For Santa Rosa CA with WMM model on 5/14/24 with estimated 5 arcminute change west per year
-const float B_DECLINATION = 0.230674349; // 13 degrees 13 arcminutes east +- 22 arcminutes
+/** Magnetic delcination in [rad]
+ * https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#declination
+ * For Santa Rosa CA with WMM model on 5/14/24 with estimated 5 arcminute change west per year
+ */
+ const float B_DECLINATION = 0.230674349; // 13 degrees 13 arcminutes east +- 22 arcminutes
 
 typedef enum print_option { DONT_PRINT, PRINT } print_option;
 /* USER CODE END PV */
@@ -744,7 +746,7 @@ void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float
 	if (option == PRINT)
 	{
 		char str[MAX_PRINT_LENGTH];
-		serial_print("\r\nBx\t\tBy\t\tAzimuth,\tEast Slope,\tNorth Slope\r\n");
+		serial_print("\r\nBx,\t\tBy,\t\tAzimuth,\tEast Slope,\tNorth Slope\r\n");
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
 			sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f\r\n", bx[i], by[i], azimuth[i] * 180 / M_PI, zx[i], zy[i]);
