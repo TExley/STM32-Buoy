@@ -168,6 +168,8 @@ int main(void)
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
+	while(1)
+	{
 	int16_vector3* accel_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
 
 	float* wx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.x in rad/s
@@ -211,7 +213,7 @@ int main(void)
 	MX_USB_HOST_Process();
 
 	/* USER CODE BEGIN 3 */
-
+	}
 	/* USER CODE END 3 */
 }
 
