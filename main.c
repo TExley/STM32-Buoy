@@ -431,62 +431,61 @@ static void MX_GPIO_Init(void)
 void device_init()
 {
 	HAL_StatusTypeDef status;
-		char str[MAX_PRINT_LENGTH];
 
-		serial_print("\r\n\r\n\r\n\r\n\r\nNew Session\r\n");
+	serial_print("\r\n\r\n\r\n\r\n\r\nNew Session\r\n");
 
-		status = ICM20948_Init(&hi2c1, SDO_LOW);
-		if (status != HAL_OK)
-		{
-			sprintf(str, "Could not initialize ICM20948.\r\nStatus = %d\r\n", status);
-			serial_print(str);
-			Error_Handler();
-		}
-		serial_print("Initialized ICM20948.\r\n");
-
-		status = ICM20948_Reset();
-		if (status != HAL_OK)
-		{
-			sprintf(str, "Could not reset ICM20948.\r\nStatus = %d\r\n", status);
-			serial_print(str);
-			Error_Handler();
-		}
-		serial_print("Reset ICM20948.\r\n");
-
-		status = ICM20948_Wake();
-		if (status != HAL_OK)
-		{
-			sprintf(str, "Could not wake ICM20948.\r\nStatus = %d\r\n", status);
-			serial_print(str);
-			Error_Handler();
-		}
-		serial_print("Woke ICM20948.\r\n");
-
-		status = AK09916_Init();
-		if (status != HAL_OK)
-		{
-			sprintf(str, "Could not find AK09916.\r\nStatus = %d\r\n", status);
-			serial_print(str);
-			Error_Handler();
-		}
-		serial_print("Initialized AK09916.\r\n");
-
-		status = init_registers();
-		if (status != HAL_OK)
-		{
-			sprintf(str, "Could initialize ICM20948 registers.\r\nStatus = %d\r\n", status);
-			serial_print(str);
-			Error_Handler();
-		}
-		serial_print("Initialized ICM20948 registers.\r\n");
-
-
-		sprintf(str, "Sample rate: %lums, %f/s\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
+	status = ICM20948_Init(&hi2c1, SDO_LOW);
+	if (status != HAL_OK)
+	{
+		sprintf(str, "Could not initialize ICM20948.\r\nStatus = %d\r\n", status);
 		serial_print(str);
+		Error_Handler();
+	}
+	serial_print("Initialized ICM20948.\r\n");
 
-		sprintf(str, "Accel scale: %f\r\nGyro scale: %f\n\rMag scale: %f\r\n",
-				ACCEL_SENSITIVITY_SCALE_FACTOR, GYRO_SENSITIVITY_SCALE_FACTOR, MAG_SENSITIVITY_SCALE_FACTOR);
+	status = ICM20948_Reset();
+	if (status != HAL_OK)
+	{
+		sprintf(str, "Could not reset ICM20948.\r\nStatus = %d\r\n", status);
 		serial_print(str);
+		Error_Handler();
+	}
+	serial_print("Reset ICM20948.\r\n");
+
+	status = ICM20948_Wake();
+	if (status != HAL_OK)
+	{
+		sprintf(str, "Could not wake ICM20948.\r\nStatus = %d\r\n", status);
+		serial_print(str);
+		Error_Handler();
+	}
+	serial_print("Woke ICM20948.\r\n");
+
+	status = AK09916_Init();
+	if (status != HAL_OK)
+	{
+		sprintf(str, "Could not find AK09916.\r\nStatus = %d\r\n", status);
+		serial_print(str);
+		Error_Handler();
+	}
+	serial_print("Initialized AK09916.\r\n");
+
+	status = init_registers();
+	if (status != HAL_OK)
+	{
+		sprintf(str, "Could initialize ICM20948 registers.\r\nStatus = %d\r\n", status);
+		serial_print(str);
+		Error_Handler();
+	}
+	serial_print("Initialized ICM20948 registers.\r\n");
+
+
+	sprintf(str, "Sample rate: %lums, %f/s\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
+	serial_print(str);
+
+	sprintf(str, "Accel scale: %f\r\nGyro scale: %f\n\rMag scale: %f\r\n",
+			ACCEL_SENSITIVITY_SCALE_FACTOR, GYRO_SENSITIVITY_SCALE_FACTOR, MAG_SENSITIVITY_SCALE_FACTOR);
+	serial_print(str);
 }
 
 HAL_StatusTypeDef init_registers()
