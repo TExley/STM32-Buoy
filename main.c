@@ -32,12 +32,12 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum print_option { DONT_PRINT, PRINT } print_option;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define MAX_PRINT_LENGTH 100 // Maximum lpuart1 serial data buffer length
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,10 +54,7 @@ UART_HandleTypeDef hlpuart1;
 // Maximum time-out to wait for any print ACK
 const uint32_t MAXIMUM_PRINT_TIMEOUT = 100;
 
-// Maximum lpuart1 serial data buffer length
-const uint8_t MAX_PRINT_LENGTH = 100;
-
-const uint16_t SAMPLE_SIZE = 2048;
+const uint16_t SAMPLE_SIZE = 1 << 10;
 const uint8_t SAMPLE_POWER = 8; // 8 or less
 const uint8_t SAMPLE_VALUE = (uint8_t) ((2 << (uint16_t) SAMPLE_POWER) - 1);
 const uint32_t SAMPLE_PERIOD_MS = 10 * (1 + (uint32_t) SAMPLE_VALUE) / 11;
@@ -100,7 +97,7 @@ const float BEZ = 42.1813; // Uncertainty of .157uT and change of -0.0981uT/yr
  * https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#declination
  * For Santa Rosa CA with WMM model on 5/14/24 with estimated 5 arcminute change west per year
  */
- const float B_DECLINATION = 0.230674349; // 13 degrees 13 arcminutes east +- 22 arcminutes
+const float B_DECLINATION = 0.230674349; // 13 degrees 13 arcminutes east +- 22 arcminutes
 
 /* These can be determined by spinning the buoy at constant rate so
  *  roll and pitch are both 0 and A can be determined by gyro then,
@@ -115,7 +112,6 @@ const float B10 = -2.21720753, 	// residual hull magnetic effect (bow) 9.36
 			B21 = 0.02056748, 	// induced hull magnetic effect (starboard) -0.0115
 			B22 = 1.07178173; 	// induced hull magnetic effect (starboard) 1.15
 
-typedef enum print_option { DONT_PRINT, PRINT } print_option;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -128,7 +124,7 @@ void MX_USB_HOST_Process(void);
 /* USER CODE BEGIN PFP */
 void device_init();
 HAL_StatusTypeDef init_registers();
-void serial_print(const char[MAX_PRINT_LENGTH]);
+void serial_print(const char* buffer);
 void offset_gyro(int16_vector3* gyro);
 void measure_gyro_offset();
 void fft(float complex* f, uint16_t size);
@@ -140,7 +136,7 @@ void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+char str[MAX_PRINT_LENGTH];
 /* USER CODE END 0 */
 
 /**
@@ -531,7 +527,7 @@ HAL_StatusTypeDef init_registers()
 	return ICM20948_Wake();
 }
 
-void serial_print(const char buffer[MAX_PRINT_LENGTH])
+void serial_print(const char* buffer)
 {
 	HAL_UART_Transmit(&hlpuart1, (uint8_t*) buffer, strlen(buffer), MAXIMUM_PRINT_TIMEOUT);
 }
@@ -555,7 +551,6 @@ void measure_gyro_offset()
 		Error_Handler();
 	} else
 	{
-		char str[MAX_PRINT_LENGTH];
 		sprintf(str, "Gyro Offset: %hd, %hd, %hd\r\n", gyro_off.x, gyro_off.y, gyro_off.z);
 		serial_print(str);
 	}
@@ -684,8 +679,6 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 
 	if (option == PRINT)
 	{
-		char str[MAX_PRINT_LENGTH];
-
 		serial_print("\r\nIndex,\tAccelX,\tAccelY,\tAccelZ,\tGyroX,\tGyroY,\tGyroZ,\tMagX,\tMagY,\tMagZ\r\n");
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
@@ -726,8 +719,6 @@ void integrate_w(float* roll, float* pitch, float* wx, float* wy, float* wz, pri
 
 	if (option == PRINT)
 	{
-		char str[MAX_PRINT_LENGTH];
-
 		serial_print("\r\nRoll,\t\tPitch,\t\tWx\t\tWy\t\tWz\r\n");
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
@@ -771,7 +762,6 @@ void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float
 
 	if (option == PRINT)
 	{
-		char str[MAX_PRINT_LENGTH];
 		serial_print("\r\nBx,\t\tBy,\t\tAzimuth,\tEast Slope,\tNorth Slope\r\n");
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
@@ -810,7 +800,6 @@ void assert_failed(uint8_t *file, uint32_t line)
 	/* USER CODE BEGIN 6 */
 	/* User can add his own implementation to report the file name and line number,
 		ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-	char str[MAX_PRINT_LENGTH];
 	sprintf(str, "Wrong parameters value: file %s on line %d\r\n", file, line) */
 	serial_print(str);
 	/* USER CODE END 6 */
