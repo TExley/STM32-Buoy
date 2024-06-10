@@ -664,9 +664,14 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 
 		// Manually corrects sensor and scales to rad/s
 		offset_gyro(gyro_samples + i);
+
+		// Standard aircraft roll, pitch, yaw directions
+		// Roll is positive when starboard goes down
+		// Pitch is positive when nose goes up
+		// Yaw is positive when nose goes starboard
 		wx[i] = gyro_samples[i].x * GYRO_SENSITIVITY_SCALE_FACTOR;
-		wy[i] = gyro_samples[i].y * GYRO_SENSITIVITY_SCALE_FACTOR;
-		wz[i] = gyro_samples[i].z * GYRO_SENSITIVITY_SCALE_FACTOR;
+		wy[i] = -gyro_samples[i].y * GYRO_SENSITIVITY_SCALE_FACTOR;
+		wz[i] = -gyro_samples[i].z * GYRO_SENSITIVITY_SCALE_FACTOR;
 
 		// Converts to magnetic flux density [uT]
 		bx[i] = mag_samples[i].x * MAG_SENSITIVITY_SCALE_FACTOR;
