@@ -112,6 +112,7 @@ const float B10 = -2.21720753, 	// residual hull magnetic effect (bow) 9.36
 			B21 = 0.02056748, 	// induced hull magnetic effect (starboard) -0.0115
 			B22 = 1.07178173; 	// induced hull magnetic effect (starboard) 1.15
 
+const float B_delta = B11 * B22 - B12 * B21;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -131,7 +132,7 @@ void fft(float complex* f, uint16_t size);
 void integrate(float* f, float* df);
 void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* wz, float* bx, float* by, print_option option);
 void integrate_w(float* roll, float* pitch, float* wx, float* wy, float* wz, print_option option);
-void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float* pitch, float* bx, float* by, print_option option);
+void calculate_headings(float* zx, float* zy, float* roll, float* pitch, float* bx, float* by, print_option option);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -200,13 +201,15 @@ int main(void)
 	free(wy);
 	free(wz);
 
-	// Get azimuth from roll, pitch, and mag data
-	float* azimuth = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
-	// And get deck north and east slopes
+	float* heave = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+	free(accel_samples);
+
+	// Deck north and east slopes
 	float* zx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // East
 	float* zy = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // North
 
-	calculate_headings(azimuth, zx, zy, roll, pitch, bx, by, DONT_PRINT);
+	calculate_headings(zx, zy, roll, pitch, bx, by, DONT_PRINT);
 
 	free(bx);
 	free(by);
@@ -214,7 +217,6 @@ int main(void)
 	free(pitch);
 	free(accel_samples);
 
-	free(azimuth);
 	free(zx);
 	free(zy);
 
@@ -728,8 +730,14 @@ void integrate_w(float* roll, float* pitch, float* wx, float* wy, float* wz, pri
 	}
 }
 
-void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float* pitch, float* bx, float* by, print_option option)
+void calculate_headings(float* zx, float* zy, float* roll, float* pitch, float* bx, float* by, print_option option)
 {
+	if (option == PRINT)
+		serial_print("\r\nBx,\t\tBy,\t\tAzimuth\t\tEast Slope,\tNorth Slope\r\n");
+
+	float B_cosD = cosf(B_DECLINATION);
+	float B_sinD = sinf(B_DECLINATION);
+
 	for (int i = 0; i < SAMPLE_SIZE; i++)
 	{
 		float cosP = cosf(pitch[i]);
@@ -737,35 +745,23 @@ void calculate_headings(float* azimuth, float* zx, float* zy, float* roll, float
 		float cosR = cosf(roll[i]);
 		float sinR = sinf(roll[i]);
 
-		// Coefficients in a*sinA + b*cosA = c;
-		float a = -BEY*B12*cosR;
-		float b = BEY*(B11*cosP + B12*sinP*sinR);
-		float c = bx[i] - B10 - BEZ*(B11*sinP - B12*cosP*sinR);
+		float D = BEY * B_delta * cosP * cosR;
 
-		// Coefficients in d*sinA + e*cosA = f;
-		float d = -BEY*B22*cosR;
-		float e = BEY*(B21*cosP + B22*sinP*sinR);
-		float f = by[i] - B20 - BEZ*(B21*sinP - B22*cosP*sinR);
-
-		float sinA = (c*e - b*f) / (a*e - b*d);
-		float cosA = (a*f - c*d) / (a*e - b*d);
-
-		azimuth[i] = atan2f(sinA,  cosA) + B_DECLINATION;
+		// Azimuth clockwise from magnetic north
+		float sinA = ((B21 * cosP + B22 * sinP * sinR) * (bx[i] - B10) -
+					  (B11 * cosP - B12 * sinP * sinR) * (by[i] - B20) - BEZ * B_delta * sinR) / D;
+		float cosA = ((B22 * (bx[i] - B10) - B12 * (by[i] - B20)) * cosR - BEZ * B_delta * sinP * cosR) / D;
 
 		// Recalculate for true-north azimuth
-		cosA = cosf(azimuth[i]);
-		sinA = sinf(azimuth[i]);
+		float true_cosA = cosA*B_cosD - sinA*B_sinD;
+		float true_sinA = sinA*B_cosD + cosA*B_sinD;
 
-		zx[i] = sinP * sinA / cosP - sinR * cosA / (cosP * cosR);
-		zy[i] = sinP * cosA / cosP + sinR * sinA / (cosP * cosR);
-	}
+		zx[i] = sinP * true_sinA / cosP - sinR * true_cosA / (cosP * cosR);
+		zy[i] = sinP * true_cosA / cosP + sinR * true_sinA / (cosP * cosR);
 
-	if (option == PRINT)
-	{
-		serial_print("\r\nBx,\t\tBy,\t\tAzimuth,\tEast Slope,\tNorth Slope\r\n");
-		for (int i = 0; i < SAMPLE_SIZE; i++)
+		if (option == PRINT)
 		{
-			sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f\r\n", bx[i], by[i], azimuth[i] * 180 / M_PI, zx[i], zy[i]);
+			sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f\r\n", bx[i], by[i], atan2f(true_sinA, true_cosA) * 180 / M_PI, zx[i], zy[i]);
 			serial_print(str);
 		}
 	}
