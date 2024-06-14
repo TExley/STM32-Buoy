@@ -686,10 +686,10 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 
 	if (option == PRINT)
 	{
-		serial_print("\r\nIndex,\tAccelX,\tAccelY,\tAccelZ,\tGyroX,\tGyroY,\tGyroZ,\tMagX,\tMagY,\tMagZ\r\n");
+		serial_print("AccelX,\tAccelY,\tAccelZ,\tGyroX,\tGyroY,\tGyroZ,\tMagX,\tMagY,\tMagZ\r\n");
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
-			sprintf(str, "%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n", i,
+			sprintf(str, "%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d,\t%d\r\n",
 				accel_samples[i].x, accel_samples[i].y, accel_samples[i].z,
 				gyro_samples[i].x, gyro_samples[i].y, gyro_samples[i].z,
 				mag_samples[i].x, mag_samples[i].y, mag_samples[i].z);
@@ -782,6 +782,7 @@ void Error_Handler(void)
 	/* USER CODE BEGIN Error_Handler_Debug */
 	/* User can add his own implementation to report the HAL error return state */
 	__disable_irq();
+	serial_print("ERROR :(");
 	while (1)
 	{
 	}
