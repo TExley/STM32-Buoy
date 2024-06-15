@@ -84,7 +84,8 @@ const float MAG_SENSITIVITY_SCALE_FACTOR = 0.15;
 const uint8_t INTEGRAL_REPETITIONS = 2;
 
 const float M_2PI = 2 * M_PI;
-const float M_2PI_SAMPLESSIZE = 2 * M_PI / SAMPLE_SIZE;
+const float M_2PI_SAMPLE_SIZE = 2 * M_PI / SAMPLE_SIZE;
+const float M_PI_SAMPLE_FREQUENCY = 1 / (SAMPLE_FREQUENCY * M_PI);
 
 /** Earth-fixed local magnetic field in [uT]
  * https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm
@@ -611,9 +612,16 @@ void integrate(float* f, float* df)
 
 	fft(f_complex, SAMPLE_SIZE);
 
-	// Don't need to /SAMPLE_SIZE for rest of values since it would cancel later
-	// Also f_complex[0] only has a real component
-	float f_0 = crealf(f_complex[0]) / SAMPLE_SIZE;
+	float* sinf_nk = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	float* cosf_nk = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+	{
+		sinf_nk[i] = sinf(M_2PI_SAMPLE_SIZE * i);
+		cosf_nk[i] = cosf(M_2PI_SAMPLE_SIZE * i);
+	}
+
+	float f_0 = crealf(f_complex[0]) * M_PI / SAMPLE_SIZE;
 
 	long double sum = 0;
 
@@ -621,15 +629,19 @@ void integrate(float* f, float* df)
 	{
 		f[k] = 0;
 		for (int n = 1; n < SAMPLE_SIZE / 2; n++)
-			f[k] += (crealf(f_complex[n]) * sinf(M_2PI_SAMPLESSIZE * k * n)
-				 +   cimagf(f_complex[n]) * cosf(M_2PI_SAMPLESSIZE * k * n)) / n;
-		f[k] /= M_PI;
+		{
+			uint16_t index = (k * n) % SAMPLE_SIZE;
+			f[k] += (crealf(f_complex[n]) * sinf_nk[index]
+				 +   cimagf(f_complex[n]) * cosf_nk[index]) / n;
+		}
 		f[k] += f_0 * k;
-		f[k] /= SAMPLE_FREQUENCY;
+		f[k] *= M_PI_SAMPLE_FREQUENCY;
 		sum += f[k];
 	}
 
 	free(f_complex);
+	free(sinf_nk);
+	free(cosf_nk);
 
 	float average = sum / SAMPLE_SIZE;
 
