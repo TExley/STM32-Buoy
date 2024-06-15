@@ -38,6 +38,7 @@ typedef enum print_option { DONT_PRINT, PRINT } print_option;
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAX_PRINT_LENGTH 100 // Maximum lpuart1 serial data buffer length
+#define GRAVITY 9.8
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,7 +75,7 @@ const float GYRO_SENSITIVITY_SCALE_FACTOR = M_PI / (180 * 131.f / GYRO_SENSITIVI
 
 const uint8_t ACCEL_FS_SEL = ACCEL_FS_SEL_4g; // 0 equivalent to ACCEL_FS_SEL_2g
 // 16384 is typical value for ACCEL_FS_SEL = 0 (DS p11)
-const float ACCEL_SENSITIVITY_SCALE_FACTOR = 1.f / (16384 >> (ACCEL_FS_SEL >> 1));
+const float ACCEL_SENSITIVITY_SCALE_FACTOR = GRAVITY * 1.f / (16384 >> (ACCEL_FS_SEL >> 1));
 
 // Outputs range from [-32752, 32752] and converts to equivalent values from [-4912, 4912]
 // In magnetic flux density uT
@@ -134,6 +135,7 @@ void integrate(float* f, float* df);
 void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* wz, float* bx, float* by, print_option option);
 void integrate_w(float* roll, float* pitch, float* wx, float* wy, float* wz, print_option option);
 void calculate_headings(float* zx, float* zy, float* roll, float* pitch, float* bx, float* by, print_option option);
+void calculate_heave(float* heave, int16_vector3* accel_samples, float* roll, float* pitch, print_option option);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -190,7 +192,9 @@ int main(void)
 	float* bx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.x in rad/s
 	float* by = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.y in rad/s
 
+	serial_print("Data collection starting.\r\n");
 	collect_samples(accel_samples, wx, wy, wz, bx, by, DONT_PRINT);
+	serial_print("Data collection done.\r\n");
 
 	// Get roll and pitch from gyro data
 	float* roll = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
@@ -204,6 +208,8 @@ int main(void)
 
 	float* heave = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
+	calculate_heave(heave, accel_samples, roll, pitch, DONT_PRINT);
+
 	free(accel_samples);
 
 	// Deck north and east slopes
@@ -216,10 +222,10 @@ int main(void)
 	free(by);
 	free(roll);
 	free(pitch);
-	free(accel_samples);
 
 	free(zx);
 	free(zy);
+	free(heave);
 
 	/* USER CODE END WHILE */
 	MX_USB_HOST_Process();
@@ -658,8 +664,6 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 	ICM20948_ReadAccelGryoRegisters(accel_samples, gyro_samples);
 	HAL_Delay(STARTUP_DELAY);
 
-	serial_print("Data collection starting.\r\n");
-
 	for (uint16_t i = 0; i < SAMPLE_SIZE; i++)
 	{
 		uint32_t start_time = HAL_GetTick();
@@ -668,11 +672,6 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 
 		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
 		ICM20948_ReadMagRegisters(mag_samples + i);
-
-		// Acceleration should be positive when moving starboard
-		accel_samples[i].y = -accel_samples[i].y;
-		// Mast down vertical acceleration points down through breakout board
-		accel_samples[i].z = -accel_samples[i].z;
 
 		// Manually corrects sensor and scales to rad/s
 		offset_gyro(gyro_samples + i);
@@ -693,8 +692,6 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 		if (wait_time > 0)
 			HAL_Delay((uint32_t) wait_time);
 	}
-
-	serial_print("Data collection done.\r\n");
 
 	if (option == PRINT)
 	{
@@ -779,6 +776,28 @@ void calculate_headings(float* zx, float* zy, float* roll, float* pitch, float* 
 		if (option == PRINT)
 		{
 			sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f\r\n", bx[i], by[i], atan2f(true_sinA, true_cosA) * 180 / M_PI, zx[i], zy[i]);
+			serial_print(str);
+		}
+	}
+}
+
+void calculate_heave(float* heave, int16_vector3* accel_samples, float* roll, float* pitch, print_option option)
+{
+	if (option == PRINT)
+		serial_print("roll,\t\tpitch\t\t,x,\t\ty,\t\tz,\t\theave\r\n");
+
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+	{
+		heave[i] = accel_samples[i].x * ACCEL_SENSITIVITY_SCALE_FACTOR * sinf(pitch[i]) * cosf(roll[i]) +
+				   accel_samples[i].y * ACCEL_SENSITIVITY_SCALE_FACTOR * cosf(pitch[i]) * sinf(roll[i]) +
+				   accel_samples[i].z * ACCEL_SENSITIVITY_SCALE_FACTOR * cosf(pitch[i]) * cosf(roll[i]);
+
+		if (option == PRINT)
+		{
+			sprintf(str, "%f,\t%f,\t%f,\t%f,\t%f,\t%f\r\n", roll[i] * 180 / M_PI, pitch[i] * 180 / M_PI,
+					accel_samples[i].x * ACCEL_SENSITIVITY_SCALE_FACTOR,
+					accel_samples[i].y * ACCEL_SENSITIVITY_SCALE_FACTOR,
+					accel_samples[i].z * ACCEL_SENSITIVITY_SCALE_FACTOR, heave[i]);
 			serial_print(str);
 		}
 	}
