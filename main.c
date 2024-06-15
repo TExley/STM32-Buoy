@@ -107,12 +107,12 @@ const float B_DECLINATION = 0.230674349; // 13 degrees 13 arcminutes east +- 22 
  * I can't, so I will instead align B1 to known compass headings to solve for Bij.
  * In python: Bijs = numpy.linalg.pinv(X)@Bi where X is the Nx3 matrix of Bij coefficients
  */
-const float B10 = -2.21720753, 	// residual hull magnetic effect (bow) 9.36
-			B11 = 1.09226593, 	// induced hull magnetic effect (bow) 0.757
-			B12 = -0.12668346, 	// induced hull magnetic effect (bow) 0.065
-			B20 = 8.57181184, 	// residual hull magnetic effect (starboard) 4.27
-			B21 = 0.02056748, 	// induced hull magnetic effect (starboard) -0.0115
-			B22 = 1.07178173; 	// induced hull magnetic effect (starboard) 1.15
+const float B10 = -2.21720753, 	// residual hull magnetic effect (bow) 0
+			B11 = 1.09226593, 	// induced hull magnetic effect (bow) 1
+			B12 = -0.12668346, 	// induced hull magnetic effect (bow) 0
+			B20 = 8.57181184, 	// residual hull magnetic effect (starboard) 0
+			B21 = 0.02056748, 	// induced hull magnetic effect (starboard) 0
+			B22 = 1.07178173; 	// induced hull magnetic effect (starboard) 1
 
 const float B_delta = B11 * B22 - B12 * B21;
 /* USER CODE END PV */
