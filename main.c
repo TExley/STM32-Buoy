@@ -55,10 +55,11 @@ UART_HandleTypeDef hlpuart1;
 // Maximum time-out to wait for any print ACK
 const uint32_t MAXIMUM_PRINT_TIMEOUT = 100;
 
-const uint16_t SAMPLE_SIZE = 1 << 10;
-const uint8_t SAMPLE_POWER = 8; // 8 or less
-const uint8_t SAMPLE_VALUE = (uint8_t) ((2 << (uint16_t) SAMPLE_POWER) - 1);
-const uint32_t SAMPLE_PERIOD_MS = 10 * (1 + (uint32_t) SAMPLE_VALUE) / 11;
+const uint16_t SAMPLE_SIZE = 1 << 10; // Must be = 2^n where n is an integer
+// Note that a SAMPLE_POWER < 2 will record samples slower than the set sample rate
+const uint8_t SAMPLE_POWER = 6; // 0 <= SAMPLE_POWER <= 8: 8 ~4.3Hz 7 ~8.6Hz etc
+const uint8_t SAMPLE_VALUE = (uint8_t) (((uint16_t) 1 << SAMPLE_POWER) - 1);
+const uint32_t SAMPLE_PERIOD_MS = 10 * (1 + (uint32_t) SAMPLE_VALUE) / 11 + 1;
 const float SAMPLE_FREQUENCY = 11000.f / (10 * (1 + (uint32_t) SAMPLE_VALUE));
 
 // How long to wait before checking external sensor registers for magnetometer data
@@ -538,7 +539,7 @@ HAL_StatusTypeDef init_registers()
 {
 	HAL_StatusTypeDef status;
 
-	status = ICM20948_WriteRegister(&REG_GYRO_SMPLRT_DIV, SAMPLE_VALUE);
+	status = ICM20948_WriteRegister(&REG_GYRO_SMPLRT_DIV, (uint8_t) SAMPLE_VALUE);
 	if (status != HAL_OK)
 		return status;
 
@@ -550,7 +551,11 @@ HAL_StatusTypeDef init_registers()
 	if (status != HAL_OK)
 		return status;
 
-	status = ICM20948_WriteRegister(&REG_ACCEL_SMPLRT_DIV_2, SAMPLE_VALUE);
+	status = ICM20948_WriteRegister(&REG_ACCEL_SMPLRT_DIV_1, (uint8_t) (SAMPLE_VALUE & 0b111100000000) >> 8);
+	if (status != HAL_OK)
+		return status;
+
+	status = ICM20948_WriteRegister(&REG_ACCEL_SMPLRT_DIV_2, (uint8_t) SAMPLE_VALUE);
 	if (status != HAL_OK)
 		return status;
 
