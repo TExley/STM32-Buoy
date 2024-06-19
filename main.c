@@ -181,47 +181,96 @@ int main(void)
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
+	sprintf(str, "Accel scale: %.9f\r\nGyro scale: %.10f\n\rMag scale: %.2f\r\n",
+			ACCEL_SENSITIVITY_SCALE_FACTOR, GYRO_SENSITIVITY_SCALE_FACTOR, MAG_SENSITIVITY_SCALE_FACTOR);
+	serial_print(str);
+
+	sprintf(str, "Sample size: %u\r\n", SAMPLE_SIZE);
+	serial_print(str);
+
+	sprintf(str, "Sample rate: %lums, %f/s\r\n\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
+	serial_print(str);
+
 	while(1)
 	{
-	int16_vector3* accel_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
+	uint32_t timeit;
 
+	/* DATA COLLECTION BEGIN */
+	// Definitions
+	int16_vector3* accel_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
 	float* wx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.x in rad/s
 	float* wy = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.y in rad/s
 	float* wz = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.z in rad/s
+	float* bx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // mag_samples.x in uT
+	float* by = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // mag_samples.y in uT
 
-	float* bx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.x in rad/s
-	float* by = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // gyro_samples.y in rad/s
-
+	// Body
 	serial_print("Data collection starting.\r\n");
+	timeit = HAL_GetTick();
 	collect_samples(accel_samples, wx, wy, wz, bx, by, DONT_PRINT);
-	serial_print("Data collection done.\r\n");
+	timeit = HAL_GetTick() - timeit;
+	sprintf(str, "Data collection done in %lums.\r\n\r\n", timeit);
+	serial_print(str);
+	/* DATA COLLECTION END */
 
-	// Get roll and pitch from gyro data
-	float* roll = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
-	float* pitch = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
+	/* ROLL PITCH CALCULATION BEGIN */
+	// Definitions
+	float* roll = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // Positive down from starboard
+	float* pitch = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // Positive up from bow
+
+	// Body
+	serial_print("Roll/Pitch calculation starting.\r\n");
+	timeit = HAL_GetTick();
 	integrate_w(roll, pitch, wx, wy, wz, DONT_PRINT);
+	timeit = HAL_GetTick() - timeit;
+	sprintf(str, "Roll/Pitch calculation done in %lums.\r\n\r\n", timeit);
+	serial_print(str);
 
+	// Closing
 	free(wx);
 	free(wy);
 	free(wz);
+	/* ROLL PITCH CALCULATION END */
 
-	float* heave = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
+	/* HEAVE CALCULATION BEGIN */
+	// Definitions
+	float* heave = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // Earth-fixed reference
+
+	// Body
+	serial_print("Heave calculation starting.\r\n");
+	timeit = HAL_GetTick();
 	calculate_heave(heave, accel_samples, roll, pitch, DONT_PRINT);
+	timeit = HAL_GetTick() - timeit;
+	sprintf(str, "Heave calculation done in %lums.\r\n\r\n", timeit);
+	serial_print(str);
 
+	// Closing
 	free(accel_samples);
+	/* HEAVE CALCULATION END */
 
-	// Deck north and east slopes
-	float* zx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // East
-	float* zy = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // North
 
+	/* NORTH AND EAST DECK SLOPE CALCULATION BEGIN */
+	// Definitions
+	float* zx = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // East deck slope
+	float* zy = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // North deck slope
+
+	// Body
+	serial_print("Deck slopes calculation starting.\r\n");
+	timeit = HAL_GetTick();
 	calculate_headings(zx, zy, roll, pitch, bx, by, DONT_PRINT);
+	timeit = HAL_GetTick() - timeit;
+	sprintf(str, "Heave calculation done in %lums\r\n\r\n", timeit);
+	serial_print(str);
 
+	// Closing
 	free(bx);
 	free(by);
 	free(roll);
 	free(pitch);
+	/* NORTH AND EAST DECK SLOPE CALCULATION END */
+
 
 	free(zx);
 	free(zy);
@@ -483,14 +532,6 @@ void device_init()
 		Error_Handler();
 	}
 	serial_print("Initialized ICM20948 registers.\r\n");
-
-
-	sprintf(str, "Sample rate: %lums, %f/s\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
-	serial_print(str);
-
-	sprintf(str, "Accel scale: %f\r\nGyro scale: %f\n\rMag scale: %f\r\n",
-			ACCEL_SENSITIVITY_SCALE_FACTOR, GYRO_SENSITIVITY_SCALE_FACTOR, MAG_SENSITIVITY_SCALE_FACTOR);
-	serial_print(str);
 }
 
 HAL_StatusTypeDef init_registers()
