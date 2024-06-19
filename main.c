@@ -62,7 +62,7 @@ const uint32_t SAMPLE_PERIOD_MS = 10 * (1 + (uint32_t) SAMPLE_VALUE) / 11;
 const float SAMPLE_FREQUENCY = 11000.f / (10 * (1 + (uint32_t) SAMPLE_VALUE));
 
 // How long to wait before checking external sensor registers for magnetometer data
-const uint32_t MAG_SAFTEY_WAIT = 10;
+const uint32_t MAG_SAFTEY_WAIT = (SAMPLE_PERIOD_MS / 4 < 10) ? SAMPLE_PERIOD_MS / 4 : 10;
 
 // Gets added to measured gyro int16_vector3 via offset_gyro function
 const int16_vector3 gyro_offset = { 0, -40, -79 }; // Measured for my specific device
@@ -714,6 +714,13 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
 		ICM20948_ReadMagRegisters(mag_samples + i);
 
+		int64_t wait_time = SAMPLE_PERIOD_MS + start_time - (int64_t) HAL_GetTick();
+		if (wait_time > 0)
+			HAL_Delay((uint32_t) wait_time);
+	}
+
+	for (uint16_t i = 0; i < SAMPLE_SIZE; i++)
+	{
 		// Manually corrects sensor and scales to rad/s
 		offset_gyro(gyro_samples + i);
 
@@ -728,10 +735,6 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 		// Converts to magnetic flux density [uT]
 		bx[i] = mag_samples[i].x * MAG_SENSITIVITY_SCALE_FACTOR;
 		by[i] = mag_samples[i].y * MAG_SENSITIVITY_SCALE_FACTOR;
-
-		int64_t wait_time = SAMPLE_PERIOD_MS + start_time - (int64_t) HAL_GetTick();
-		if (wait_time > 0)
-			HAL_Delay((uint32_t) wait_time);
 	}
 
 	if (option == PRINT)
