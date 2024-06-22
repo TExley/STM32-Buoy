@@ -571,7 +571,7 @@ void device_init()
 	status = init_registers();
 	if (status != HAL_OK)
 	{
-		sprintf(str, "Could initialize ICM20948 registers.\r\nStatus = %d\r\n", status);
+		sprintf(str, "Could not initialize ICM20948 registers.\r\nStatus = %d\r\n", status);
 		serial_print(str);
 		Error_Handler();
 	}
