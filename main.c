@@ -37,12 +37,26 @@ typedef enum print_option
 	DONT_PRINT,
 	PRINT
 } print_option;
+
+// The only sample rates where the accel and gyro are synchronized
+typedef enum SAMPLE_RATES
+{
+	SAMPLE_RATE_25_HZ = 1,
+	SAMPLE_RATE_12_5_HZ = 2,
+	SAMPLE_RATE_8_33_HZ = 3,
+	SAMPLE_RATE_6_25_HZ = 4,
+	SAMPLE_RATE_5_HZ = 5
+} SAMPLE_RATES;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAX_PRINT_LENGTH 100 // Maximum lpuart1 serial data buffer length
 #define GRAVITY 9.8
+#define GYRO_SAMPLE_RATE_COEFFICIENT 44
+#define GYRO_SAMPLE_RATE_MODIFIER 2 // Gyro samples amples twice as fast as accel
+#define ACCEL_SAMPLE_RATE_COEFFICIENT 45
+#define SAMPLE_RATE_BUFFER 5 // How many ms to wait after sampling before reading
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,14 +76,17 @@ SPI_HandleTypeDef hspi1;
 const uint32_t MAXIMUM_PRINT_TIMEOUT = 100;
 
 const uint16_t SAMPLE_SIZE = 1 << 10; // Must be = 2^n where n is an integer
-// Note that a SAMPLE_POWER < 2 will record samples slower than the set sample rate
-const uint8_t SAMPLE_POWER = 6; // 0 <= SAMPLE_POWER <= 8: 8 ~4.3Hz 7 ~8.6Hz etc
-const uint8_t SAMPLE_VALUE = (uint8_t) (((uint16_t) 1 << SAMPLE_POWER) - 1);
-const uint32_t SAMPLE_PERIOD_MS = 10 * (1 + (uint32_t) SAMPLE_VALUE) / 11 + 1;
-const float SAMPLE_FREQUENCY = 11000.f / (10 * (1 + (uint32_t) SAMPLE_VALUE));
 
-// How long to wait before checking external sensor registers for magnetometer data
-const uint32_t MAG_SAFTEY_WAIT = (SAMPLE_PERIOD_MS / 4 < 10) ? SAMPLE_PERIOD_MS / 4 : 10;
+const SAMPLE_RATES SAMPLE_RATE = SAMPLE_RATE_12_5_HZ;
+// Gyroscope sample rate = 1100 / (1 + value)
+const uint8_t GYRO_SAMPLE_RATE_VALUE = SAMPLE_RATE * GYRO_SAMPLE_RATE_COEFFICIENT / GYRO_SAMPLE_RATE_MODIFIER - 1;
+// Accelerometer sample rate = 1125 / (1 + value)
+const uint8_t ACCEL_SAMPLE_RATE_VALUE = SAMPLE_RATE * ACCEL_SAMPLE_RATE_COEFFICIENT - 1;
+
+// Gyroscope sample period = ((1 + value) / (1100s)) * (1000ms) / (1s)
+const uint32_t GYRO_SAMPLE_PERIOD_MS = 10 * (GYRO_SAMPLE_RATE_VALUE + 1) / 11;
+const uint32_t SAMPLE_PERIOD_MS = GYRO_SAMPLE_PERIOD_MS * GYRO_SAMPLE_RATE_MODIFIER;
+const float SAMPLE_FREQUENCY = 1000.f / SAMPLE_PERIOD_MS;
 
 // Gets added to measured gyro int16_vector3 via offset_gyro function
 const int16_vector3 gyro_offset = { 0, -40, -79 }; // Measured for my specific device
@@ -196,7 +213,7 @@ int main(void)
 	sprintf(str, "Sample size: %u\r\n", SAMPLE_SIZE);
 	serial_print(str);
 
-	sprintf(str, "Sample rate: %lums, %f/s\r\n\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
+	sprintf(str, "Sample rate: %lums, %.2f/s\r\n\r\n", SAMPLE_PERIOD_MS, SAMPLE_FREQUENCY);
 	serial_print(str);
 
 	while (1)
@@ -489,17 +506,26 @@ static void MX_GPIO_Init(void)
 	HAL_PWREx_EnableVddIO2();
 
 	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
+
+	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOB, LD3_Pin | LD2_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(GPIOG,
-	USB_PowerSwitchOn_Pin | SMPS_V1_Pin | SMPS_EN_Pin | SMPS_SW_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOG, USB_PowerSwitchOn_Pin | SMPS_V1_Pin | SMPS_EN_Pin | SMPS_SW_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : B1_Pin */
 	GPIO_InitStruct.Pin = B1_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+	/*Configure GPIO pin : PA3 */
+	GPIO_InitStruct.Pin = GPIO_PIN_3;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 	/*Configure GPIO pins : LD3_Pin LD2_Pin */
 	GPIO_InitStruct.Pin = LD3_Pin | LD2_Pin;
@@ -559,7 +585,7 @@ void device_init()
 	}
 	serial_print("Woke ICM20948.\r\n");
 
-	status = AK09916_Init(CONT_MEASURE_4);
+	status = AK09916_Init(SINGLE_MEASURE);
 	if (status != HAL_OK)
 	{
 		sprintf(str, "Could not find AK09916.\r\nStatus = %d\r\n", status);
@@ -582,7 +608,15 @@ HAL_StatusTypeDef init_registers()
 {
 	HAL_StatusTypeDef status;
 
-	status = ICM20948_WriteRegister(&REG_GYRO_SMPLRT_DIV, (uint8_t) SAMPLE_VALUE);
+	status = ICM20948_WriteRegister(&REG_INT_PIN_CFG, FSYNC_INT_MODE_EN);
+	if (status != HAL_OK)
+		return status;
+
+	status = ICM20948_WriteRegister(&REG_FSYNC_CONFIG, EXT_SYNC_GYRO_XOUT_L | DELAY_TIME_EN);
+	if (status != HAL_OK)
+		return status;
+
+	status = ICM20948_WriteRegister(&REG_GYRO_SMPLRT_DIV, GYRO_SAMPLE_RATE_VALUE);
 	if (status != HAL_OK)
 		return status;
 
@@ -594,11 +628,7 @@ HAL_StatusTypeDef init_registers()
 	if (status != HAL_OK)
 		return status;
 
-	status = ICM20948_WriteRegister(&REG_ACCEL_SMPLRT_DIV_1, (uint8_t) (SAMPLE_VALUE & 0b111100000000) >> 8);
-	if (status != HAL_OK)
-		return status;
-
-	status = ICM20948_WriteRegister(&REG_ACCEL_SMPLRT_DIV_2, (uint8_t) SAMPLE_VALUE);
+	status = ICM20948_WriteRegister(&REG_ACCEL_SMPLRT_DIV_2, ACCEL_SAMPLE_RATE_VALUE);
 	if (status != HAL_OK)
 		return status;
 
@@ -610,19 +640,35 @@ HAL_StatusTypeDef init_registers()
 	if (status != HAL_OK)
 		return status;
 
-	status = ICM20948_WriteRegister(&REG_I2C_MST_ODR_CONFIG, SAMPLE_POWER);
-	if (status != HAL_OK)
-		return status;
-
 	status = ICM20948_WriteRegister(&REG_ODR_ALIGN_EN, ODR_ALIGN_EN);
 	if (status != HAL_OK)
 		return status;
 
-	status = ICM20948_Sleep();
+	status = ICM20948_WriteRegister(&REG_I2C_SLV0_CTRL, 0);
 	if (status != HAL_OK)
 		return status;
 
-	return ICM20948_Wake();
+	status = ICM20948_WriteRegister(&REG_I2C_SLV0_ADDR, AK09916_ADDR_READ);
+	if (status != HAL_OK)
+		return status;
+
+	status = ICM20948_WriteRegister(&REG_I2C_SLV0_REG, HXL);
+	if (status != HAL_OK)
+		return status;
+
+	status = ICM20948_WriteRegister(&REG_I2C_SLV4_ADDR, AK09916_ADDR_WRITE);
+	if (status != HAL_OK)
+		return status;
+
+	status = ICM20948_WriteRegister(&REG_I2C_SLV4_REG, CNTL2);
+	if (status != HAL_OK)
+		return status;
+
+	status = ICM20948_WriteRegister(&REG_I2C_SLV4_DO, SINGLE_MEASURE);
+	if (status != HAL_OK)
+		return status;
+
+	return ICM20948_Sleep();
 }
 
 void serial_print(const char* buffer)
@@ -748,23 +794,68 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 	int16_vector3* gyro_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
 	int16_vector3* mag_samples = (int16_vector3*) malloc(sizeof(int16_vector3) * SAMPLE_SIZE);
 
-	// Read once to get values updating
-	ICM20948_ReadAccelGryoRegisters(accel_samples, gyro_samples);
-	HAL_Delay(STARTUP_DELAY);
+	ICM20948_Wake();
+
+	// Find when gyro odr events happen
+	float delay_ms;
+	uint32_t fsync_time;
+	do
+	{
+		// Send fsync event
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);
+		HAL_Delay(1);
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
+		fsync_time = HAL_GetTick();
+
+		HAL_Delay(GYRO_SAMPLE_PERIOD_MS);
+
+		// Read delay between fsync event and gyro_odr
+		uint8_t data[2];
+		ICM20948_ReadRegisters(&REG_DELAY_TIMEH, data, 2);
+		delay_ms = (data[0] * 256 + data[1]) * 0.0009645f;
+
+	} while (delay_ms > 1);
+
+	// Find when accel odr events happen
+	HAL_Delay(SAMPLE_PERIOD_MS - (HAL_GetTick() - fsync_time) + SAMPLE_RATE_BUFFER);
+	uint32_t start_time = HAL_GetTick();
+
+	ICM20948_ReadAccelRegisters(accel_samples);
+
+	HAL_Delay(GYRO_SAMPLE_PERIOD_MS + start_time - HAL_GetTick());
+	start_time = HAL_GetTick();
+
+	ICM20948_ReadAccelRegisters(accel_samples + 1);
+
+	if (accel_samples[0].x != accel_samples[1].x)
+		HAL_Delay(GYRO_SAMPLE_PERIOD_MS + start_time - HAL_GetTick());
+	else
+		HAL_Delay(SAMPLE_PERIOD_MS + start_time - HAL_GetTick());
+
+	start_time = HAL_GetTick();
+	ICM20948_WriteRegister(&REG_I2C_SLV4_CTRL, I2C_SLV_EN | I2C_SLV_LENG_1);
 
 	for (uint16_t i = 0; i < SAMPLE_SIZE; i++)
 	{
-		uint32_t start_time = HAL_GetTick();
+		HAL_Delay(GYRO_SAMPLE_PERIOD_MS + start_time - HAL_GetTick()); // Sample wait
+		start_time = HAL_GetTick();
 
+		// Set magnetometer to read sensor
+		ICM20948_WriteRegister(&REG_I2C_SLV0_CTRL, I2C_SLV_EN | I2C_SLV_LENG_8);
+
+		HAL_Delay(GYRO_SAMPLE_PERIOD_MS + start_time - HAL_GetTick()); // Read wait
+		start_time = HAL_GetTick();
+
+		// Read Sensors
 		ICM20948_ReadAccelGryoRegisters(accel_samples + i, gyro_samples + i);
-
-		HAL_Delay(MAG_SAFTEY_WAIT); // Small delay to make sure mag data is ready
 		ICM20948_ReadMagRegisters(mag_samples + i);
 
-		int64_t wait_time = SAMPLE_PERIOD_MS + start_time - (int64_t) HAL_GetTick();
-		if (wait_time > 0)
-			HAL_Delay((uint32_t) wait_time);
+		// Set magnetometer to sample sensor
+		ICM20948_WriteRegister(&REG_I2C_SLV4_CTRL, I2C_SLV_EN | I2C_SLV_LENG_1);
+		ICM20948_WriteRegister(&REG_I2C_SLV0_CTRL, 0);
 	}
+
+	ICM20948_Sleep();
 
 	for (uint16_t i = 0; i < SAMPLE_SIZE; i++)
 	{
