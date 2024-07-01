@@ -756,11 +756,24 @@ void integrate(float* f, float* df)
 	float* sinf_nk = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 	float* cosf_nk = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
-	for (int i = 0; i < SAMPLE_SIZE; i++)
+	// Undefined for first index
+	float* f_real = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	float* f_imag = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+	float* n_inv = (float*) malloc(sizeof(float) * SAMPLE_SIZE / 2);
+
+	sinf_nk[0] = 0;
+	cosf_nk[0] = 1;
+
+	for (int i = 1; i < SAMPLE_SIZE; i++)
 	{
 		sinf_nk[i] = sinf(M_2PI_SAMPLE_SIZE * i);
 		cosf_nk[i] = cosf(M_2PI_SAMPLE_SIZE * i);
+		f_real[i] = crealf(f_complex[i]);
+		f_imag[i] = cimagf(f_complex[i]);
+		n_inv[i] = 1.f / i;
 	}
+
+	free(f_complex);
 
 	float f_0 = crealf(f_complex[0]) * M_PI / SAMPLE_SIZE;
 
@@ -772,16 +785,18 @@ void integrate(float* f, float* df)
 		for (int n = 1; n < SAMPLE_SIZE / 2; n++)
 		{
 			uint16_t index = (k * n) % SAMPLE_SIZE;
-			f[k] += (crealf(f_complex[n]) * sinf_nk[index] + cimagf(f_complex[n]) * cosf_nk[index]) / n;
+			f[k] += (f_real[n] * sinf_nk[index] + f_imag[n] * cosf_nk[index]) * n_inv[n];
 		}
 		f[k] += f_0 * k;
 		f[k] *= M_PI_SAMPLE_FREQUENCY;
 		sum += f[k];
 	}
 
-	free(f_complex);
 	free(sinf_nk);
 	free(cosf_nk);
+	free(f_real);
+	free(f_imag);
+	free(n_inv);
 
 	float average = sum / SAMPLE_SIZE;
 
