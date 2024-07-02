@@ -782,9 +782,12 @@ void integrate(float* f, float* df)
 	for (int k = 0; k < SAMPLE_SIZE; k++)
 	{
 		f[k] = 0;
+		uint16_t index = 0;
 		for (int n = 1; n < SAMPLE_SIZE / 2; n++)
 		{
-			uint16_t index = (k * n) % SAMPLE_SIZE;
+			index += k;
+			if (index >= SAMPLE_SIZE)
+				index -= SAMPLE_SIZE;
 			f[k] += (f_real[n] * sinf_nk[index] + f_imag[n] * cosf_nk[index]) * n_inv[n];
 		}
 		f[k] += f_0 * k;
