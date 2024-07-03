@@ -51,6 +51,7 @@ typedef enum SAMPLE_RATES
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define MAXIMUM_PRINT_TIMEOUT 100 // Maximum time-out to wait for any print ACK
 #define MAX_PRINT_LENGTH 100 // Maximum lpuart1 serial data buffer length
 #define GRAVITY 9.8
 #define GYRO_SAMPLE_RATE_COEFFICIENT 44
@@ -72,8 +73,6 @@ UART_HandleTypeDef hlpuart1;
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-// Maximum time-out to wait for any print ACK
-const uint32_t MAXIMUM_PRINT_TIMEOUT = 100;
 
 const uint16_t SAMPLE_SIZE = 1 << 10; // Must be = 2^n where n is an integer
 
@@ -161,6 +160,8 @@ void collect_samples(int16_vector3* accel_samples, float* wx, float* wy, float* 
 void integrate_w(float* roll, float* pitch, float* wx, float* wy, float* wz, print_option option);
 void calculate_headings(float* zx, float* zy, float* roll, float* pitch, float* bx, float* by, print_option option);
 void calculate_heave(float* heave, int16_vector3* accel_samples, float* roll, float* pitch, print_option option);
+void co_spectral_density(float* c, float complex* x, float complex* y);
+void quad_spectral_density(float* q, float complex* x, float complex* y);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -238,6 +239,7 @@ int main(void)
 		serial_print(str);
 		/* DATA COLLECTION END */
 
+
 		/* ROLL PITCH CALCULATION BEGIN */
 		// Definitions
 		float* roll = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // Positive down from starboard
@@ -257,6 +259,7 @@ int main(void)
 		free(wz);
 		/* ROLL PITCH CALCULATION END */
 
+
 		/* HEAVE CALCULATION BEGIN */
 		// Definitions
 		float* heave = (float*) malloc(sizeof(float) * SAMPLE_SIZE); // Earth-fixed reference
@@ -272,6 +275,7 @@ int main(void)
 		// Closing
 		free(accel_samples);
 		/* HEAVE CALCULATION END */
+
 
 		/* NORTH AND EAST DECK SLOPE CALCULATION BEGIN */
 		// Definitions
@@ -293,9 +297,95 @@ int main(void)
 		free(pitch);
 		/* NORTH AND EAST DECK SLOPE CALCULATION END */
 
+
+		/* FFT ON RESULTS START */
+		// Definitions
+		float complex* heave_f = (float complex*) malloc(sizeof(float complex*) * SAMPLE_SIZE); // // Earth-fixed heave wrt. freq.
+		float complex* zx_f = (float complex*) malloc(sizeof(float complex*) * SAMPLE_SIZE); // North deck slope wrt. freq.
+		float complex* zy_f = (float complex*) malloc(sizeof(float complex*) * SAMPLE_SIZE); // East deck slope wrt. freq.
+
+		// Body
+		for (int i = 0; i < SAMPLE_SIZE; i++)
+		{
+			heave_f[i] = heave[i];
+			zx_f[i] = zx[i];
+			zy_f[i] = zy[i];
+		}
+
+		fft(heave_f, SAMPLE_SIZE);
+		fft(zx_f, SAMPLE_SIZE);
+		fft(zy_f, SAMPLE_SIZE);
+
+		// Closing
+		free(heave);
 		free(zx);
 		free(zy);
-		free(heave);
+		/* FFT ON RESULTS END */
+
+
+		/* CO&QUAD-SPECTRAL DENSITY CALCULATION START */
+		// Definitions 1
+		float* C11, * C12, * C13, * C22, * C23, * C33, * Q12, * Q13, * Q23;
+		C11 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		C12 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		C13 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		Q12 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		Q13 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+		// Body 1
+		co_spectral_density(C11, heave_f, heave_f);
+		co_spectral_density(C12, heave_f, zx_f);
+		co_spectral_density(C13, heave_f, zy_f);
+		quad_spectral_density(Q12, heave_f, zx_f);
+		quad_spectral_density(Q13, heave_f, zy_f);
+
+		// Closing 1
+		free(heave_f);
+
+		// Definitions 2
+		C22 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		C23 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		C33 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		Q23 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+		// Body 2
+		co_spectral_density(C22, heave_f, heave_f);
+		co_spectral_density(C23, heave_f, zx_f);
+		co_spectral_density(C33, heave_f, zy_f);
+		quad_spectral_density(Q23, heave_f, zx_f);
+
+		// Closing 2
+		free(zx_f);
+		free(zy_f);
+		/* CO&QUAD-SPECTRAL DENSITY CALCULATION END */
+
+
+		/* MAIN PARAMETER CALCULATIONS START */
+		// Definitions
+		float* r1 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		float* a1 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		float* r2 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		float* a2 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+		// Body
+		for (int i = 0; i < SAMPLE_SIZE; i++)
+		{
+			r1[i] = powf((Q12[i] * Q12[i] + Q13[i] * Q13[i]) / (C11[i] * (C22[i] + C33[i])), 0.5f);
+			a1[i] = 3 * M_PI * 0.5f - atan2f(Q13[i], Q12[i]);
+			r2[i] = powf(powf(C22[i] - C33[i], 2) + 4 * C23[i] * C23[i], 0.5f) / (C22[i] + C33[i]);
+			a2[i] = -3 * M_PI * 0.5f - 0.5f * atan2f(2*C23[i], C22[i] - C33[i]);
+		}
+
+		// Closing
+		free(C12);
+		free(C13);
+		free(Q12);
+		free(Q13);
+		free(C22);
+		free(C23);
+		free(C33);
+		free(Q23);
+		/* MAIN PARAMETER CALCULATIONS END */
 
 		/* USER CODE END WHILE */
 		MX_USB_HOST_Process();
@@ -999,6 +1089,18 @@ void calculate_heave(float* heave, int16_vector3* accel_samples, float* roll, fl
 			serial_print(str);
 		}
 	}
+}
+
+void co_spectral_density(float* c, float complex* x, float complex* y)
+{
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+		c[i] = 1000 * (crealf(x[i]) * crealf(y[i]) + cimagf(x[i]) * cimagf(y[i])) / (SAMPLE_SIZE * SAMPLE_PERIOD_MS);
+}
+
+void quad_spectral_density(float* q, float complex* x, float complex* y)
+{
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+		q[i] = 1000 * (cimagf(x[i]) * crealf(y[i]) - crealf(x[i]) * cimagf(y[i])) / (SAMPLE_SIZE * SAMPLE_PERIOD_MS);
 }
 /* USER CODE END 4 */
 
