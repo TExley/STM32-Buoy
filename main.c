@@ -73,7 +73,6 @@ UART_HandleTypeDef hlpuart1;
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-
 const uint16_t SAMPLE_SIZE = 1 << 10; // Must be = 2^n where n is an integer
 
 const SAMPLE_RATES SAMPLE_RATE = SAMPLE_RATE_12_5_HZ;
@@ -373,7 +372,7 @@ int main(void)
 			r1[i] = powf((Q12[i] * Q12[i] + Q13[i] * Q13[i]) / (C11[i] * (C22[i] + C33[i])), 0.5f);
 			a1[i] = 3 * M_PI * 0.5f - atan2f(Q13[i], Q12[i]);
 			r2[i] = powf(powf(C22[i] - C33[i], 2) + 4 * C23[i] * C23[i], 0.5f) / (C22[i] + C33[i]);
-			a2[i] = -3 * M_PI * 0.5f - 0.5f * atan2f(2*C23[i], C22[i] - C33[i]);
+			a2[i] = -3 * M_PI * 0.5f - 0.5f * atan2f(2 * C23[i], C22[i] - C33[i]);
 		}
 
 		// Closing
