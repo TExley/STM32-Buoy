@@ -300,9 +300,9 @@ int main(void)
 
 		/* FFT ON RESULTS START */
 		// Definitions
-		float complex* heave_f = (float complex*) malloc(sizeof(float complex*) * SAMPLE_SIZE); // // Earth-fixed heave wrt. freq.
-		float complex* zx_f = (float complex*) malloc(sizeof(float complex*) * SAMPLE_SIZE); // North deck slope wrt. freq.
-		float complex* zy_f = (float complex*) malloc(sizeof(float complex*) * SAMPLE_SIZE); // East deck slope wrt. freq.
+		float complex* heave_f = (float complex*) malloc(sizeof(float complex) * SAMPLE_SIZE); // // Earth-fixed heave wrt. freq.
+		float complex* zx_f = (float complex*) malloc(sizeof(float complex) * SAMPLE_SIZE); // North deck slope wrt. freq.
+		float complex* zy_f = (float complex*) malloc(sizeof(float complex) * SAMPLE_SIZE); // East deck slope wrt. freq.
 
 		// Body
 		for (int i = 0; i < SAMPLE_SIZE; i++)
