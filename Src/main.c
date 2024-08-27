@@ -393,15 +393,6 @@ int main(void)
 		free(Q23);
 		/* MAIN PARAMETER CALCULATIONS END */
 
-		/*
-		    float f = 1;
-			float x = 3.14159f;
-			uint32_t *bits = (uint32_t *) &x;
-
-			printf("Float: %f\n", x);
-			printf("Bits: %08x\n", *bits);
-		 */
-
 		/* USER CODE END WHILE */
 		MX_USB_HOST_Process();
 
