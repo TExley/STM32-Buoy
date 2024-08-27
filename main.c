@@ -148,7 +148,7 @@ static void MX_SPI1_Init(void);
 void MX_USB_HOST_Process(void);
 
 /* USER CODE BEGIN PFP */
-void device_init();
+HAL_StatusTypeDef device_init();
 HAL_StatusTypeDef init_registers();
 void serial_print(const char* buffer);
 void offset_gyro(int16_vector3* gyro);
@@ -201,7 +201,13 @@ int main(void)
 	MX_I2C1_Init();
 	MX_SPI1_Init();
 	/* USER CODE BEGIN 2 */
-	device_init();
+	HAL_StatusTypeDef status = device_init();
+	if (status != HAL_OK)
+	{
+		sprintf(str, "Device errored on startup.\r\nStatus = %d\r\n", status);
+		serial_print(str);
+		Error_Handler();
+	}
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -641,56 +647,40 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void device_init()
+HAL_StatusTypeDef device_init()
 {
 	HAL_StatusTypeDef status;
 
 	serial_print("\r\n\r\n\r\n\r\n\r\nNew Session\r\n");
 
+
+	serial_print("Initializing ICM20948.\r\n");
 	status = ICM20948_Init(&hi2c1, SDO_LOW);
 	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not initialize ICM20948.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Initialized ICM20948.\r\n");
+		return status;
 
 	status = ICM20948_Reset();
 	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not reset ICM20948.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Reset ICM20948.\r\n");
+		return status;
 
 	status = ICM20948_Wake();
 	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not wake ICM20948.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Woke ICM20948.\r\n");
+		return status;
+	serial_print("Initialized.\r\n");
 
+
+	serial_print("Initializing AK09916.\r\n");
 	status = AK09916_Init(SINGLE_MEASURE);
 	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not find AK09916.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Initialized AK09916.\r\n");
+		return status;
+	serial_print("Initialized.\r\n");
 
+
+	serial_print("Initializing ICM20948 registers.\r\n");
 	status = init_registers();
 	if (status != HAL_OK)
-	{
-		sprintf(str, "Could not initialize ICM20948 registers.\r\nStatus = %d\r\n", status);
-		serial_print(str);
-		Error_Handler();
-	}
-	serial_print("Initialized ICM20948 registers.\r\n");
+		return status;
+	serial_print("Initialized.\r\n");
 }
 
 HAL_StatusTypeDef init_registers()
