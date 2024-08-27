@@ -28,6 +28,7 @@
 #include "stdlib.h"
 #include "math.h"
 #include "complex.h"
+#include "nrf24.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -560,7 +561,7 @@ static void MX_SPI1_Init(void)
 	hspi1.Instance = SPI1;
 	hspi1.Init.Mode = SPI_MODE_MASTER;
 	hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-	hspi1.Init.DataSize = SPI_DATASIZE_4BIT;
+	hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
 	hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
 	hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
 	hspi1.Init.NSS = SPI_NSS_SOFT;
@@ -597,6 +598,7 @@ static void MX_GPIO_Init(void)
 	__HAL_RCC_GPIOH_CLK_ENABLE();
 	__HAL_RCC_GPIOA_CLK_ENABLE();
 	__HAL_RCC_GPIOB_CLK_ENABLE();
+	__HAL_RCC_GPIOD_CLK_ENABLE();
 	__HAL_RCC_GPIOG_CLK_ENABLE();
 	HAL_PWREx_EnableVddIO2();
 
@@ -607,6 +609,12 @@ static void MX_GPIO_Init(void)
 	HAL_GPIO_WritePin(GPIOB, LD3_Pin | LD2_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(NRF24_CE_GPIO_Port, NRF24_CE_Pin, GPIO_PIN_RESET);
+
+	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(NRF24_CSN_GPIO_Port, NRF24_CSN_Pin, GPIO_PIN_SET);
+
+	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOG, USB_PowerSwitchOn_Pin | SMPS_V1_Pin | SMPS_EN_Pin | SMPS_SW_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : B1_Pin */
@@ -614,6 +622,12 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+	/*Configure GPIO pin : NRF24_IRQ_Pin */
+	GPIO_InitStruct.Pin = NRF24_IRQ_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(NRF24_IRQ_GPIO_Port, &GPIO_InitStruct);
 
 	/*Configure GPIO pin : PA3 */
 	GPIO_InitStruct.Pin = GPIO_PIN_3;
@@ -628,6 +642,13 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	/*Configure GPIO pins : NRF24_CE_Pin NRF24_CSN_Pin */
+	GPIO_InitStruct.Pin = NRF24_CE_Pin | NRF24_CSN_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
 	/*Configure GPIO pins : USB_OverCurrent_Pin SMPS_PG_Pin */
 	GPIO_InitStruct.Pin = USB_OverCurrent_Pin | SMPS_PG_Pin;
@@ -681,6 +702,17 @@ HAL_StatusTypeDef device_init()
 	if (status != HAL_OK)
 		return status;
 	serial_print("Initialized.\r\n");
+
+
+	serial_print("Initializing nRF24.\r\n");
+	nRF24_HAL_Init(&hspi1);
+
+	nRF24_Init();
+	if (!nRF24_Check())
+		return HAL_ERROR;
+	serial_print("Initialized.\r\n");
+
+	return HAL_OK;
 }
 
 HAL_StatusTypeDef init_registers()
