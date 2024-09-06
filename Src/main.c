@@ -40,14 +40,14 @@ typedef enum print_option
 } print_option;
 
 // The only sample rates where the accel and gyro are synchronized
-typedef enum SAMPLE_RATES
+typedef enum sample_rate
 {
 	SAMPLE_RATE_25_HZ = 1,
 	SAMPLE_RATE_12_5_HZ = 2,
 	SAMPLE_RATE_8_33_HZ = 3,
 	SAMPLE_RATE_6_25_HZ = 4,
 	SAMPLE_RATE_5_HZ = 5
-} SAMPLE_RATES;
+} sample_rate;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -76,7 +76,7 @@ SPI_HandleTypeDef hspi1;
 /* USER CODE BEGIN PV */
 const uint16_t SAMPLE_SIZE = 1 << 10; // Must be = 2^n where n is an integer
 
-const SAMPLE_RATES SAMPLE_RATE = SAMPLE_RATE_12_5_HZ;
+const sample_rate SAMPLE_RATE = SAMPLE_RATE_12_5_HZ;
 // Gyroscope sample rate = 1100 / (1 + value)
 const uint8_t GYRO_SAMPLE_RATE_VALUE = SAMPLE_RATE * GYRO_SAMPLE_RATE_COEFFICIENT / GYRO_SAMPLE_RATE_MODIFIER - 1;
 // Accelerometer sample rate = 1125 / (1 + value)
