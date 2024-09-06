@@ -108,6 +108,7 @@ const float MAG_SENSITIVITY_SCALE_FACTOR = 0.15;
 const uint8_t INTEGRAL_REPETITIONS = 2;
 
 const float M_2PI = 2 * M_PI;
+const float M_3PI2 = 3 * M_PI * 0.5f;
 const float M_2PI_SAMPLE_SIZE = 2 * M_PI / SAMPLE_SIZE;
 const float M_PI_SAMPLE_FREQUENCY = 1 / (SAMPLE_FREQUENCY * M_PI);
 
@@ -355,15 +356,30 @@ int main(void)
 		Q23 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
 		// Body 2
-		co_spectral_density(C22, heave_f, heave_f);
-		co_spectral_density(C23, heave_f, zx_f);
-		co_spectral_density(C33, heave_f, zy_f);
-		quad_spectral_density(Q23, heave_f, zx_f);
+		co_spectral_density(C22, zx_f, zx_f);
+		co_spectral_density(C23, zx_f, zy_f);
+		co_spectral_density(C33, zy_f, zy_f);
+		quad_spectral_density(Q23, zx_f, zy_f);
 
 		// Closing 2
 		free(zx_f);
 		free(zy_f);
 		/* CO&QUAD-SPECTRAL DENSITY CALCULATION END */
+
+
+		/* CO&QUAD-SPECTRAL DENSITY ADJUSTMENTS END */
+		// Definitions
+		float p = 1;
+		float* Q12p = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+		float* Q13p = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
+
+		// Body
+		for (int i = 0; i < SAMPLE_SIZE; i++)
+		{
+			Q12p[i] = Q12[i]*cosf(p) + C12[i]*sinf(p);
+			Q13p[i] = Q13[i]*cosf(p) + C13[i]*sinf(p);
+		}
+		/* CO&QUAD-SPECTRAL DENSITY ADJUSTMENTS END */
 
 
 		/* MAIN PARAMETER CALCULATIONS START */
@@ -376,13 +392,17 @@ int main(void)
 		// Body
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
-			r1[i] = powf((Q12[i] * Q12[i] + Q13[i] * Q13[i]) / (C11[i] * (C22[i] + C33[i])), 0.5f);
-			a1[i] = 3 * M_PI * 0.5f - atan2f(Q13[i], Q12[i]);
+			r1[i] = powf((Q12p[i] * Q12p[i] + Q13p[i] * Q13p[i]) / (C11[i] * (C22[i] + C33[i])), 0.5f);
+			a1[i] = M_3PI2 - atan2f(Q13p[i], Q12p[i]);
 			r2[i] = powf(powf(C22[i] - C33[i], 2) + 4 * C23[i] * C23[i], 0.5f) / (C22[i] + C33[i]);
-			a2[i] = -3 * M_PI * 0.5f - 0.5f * atan2f(2 * C23[i], C22[i] - C33[i]);
+			a2[i] = -M_3PI2 - 0.5f * atan2f(2 * C23[i], C22[i] - C33[i]); // + either 0 or pi...
+			// ??? whichever makes the angle between a1 and a2 ???
 		}
 
 		// Closing
+		free(Q12p);
+		free(Q13p);
+		/* MAIN PARAMETER CALCULATIONS END */
 		free(C12);
 		free(C13);
 		free(Q12);
@@ -391,7 +411,6 @@ int main(void)
 		free(C23);
 		free(C33);
 		free(Q23);
-		/* MAIN PARAMETER CALCULATIONS END */
 
 		/* USER CODE END WHILE */
 		MX_USB_HOST_Process();
