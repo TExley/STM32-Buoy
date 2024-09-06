@@ -731,6 +731,23 @@ HAL_StatusTypeDef device_init()
 		return HAL_ERROR;
 	serial_print("Initialized.\r\n");
 
+
+	serial_print("Configuring nRF24.\r\n");
+	uint8_t ADDR[] = { 'n', 'R', 'F', '2', '4' }; // the TX address
+	nRF24_SetRFChannel(24); // set RF channel to 2424MHz
+	nRF24_SetDataRate(nRF24_DR_1Mbps); // 1Mbit/s data rate
+	nRF24_SetCRCScheme(nRF24_CRC_2byte); // 2-byte CRC scheme
+	nRF24_SetAddrWidth(5); // address width is 5 bytes
+	nRF24_SetAddr(nRF24_PIPETX, ADDR); // program TX address
+	nRF24_SetAddr(nRF24_PIPE0, ADDR); // program pipe#0 RX address, must be same as TX (for ACK packets)
+	nRF24_SetTXPower(nRF24_TXPWR_0dBm); // configure TX power
+	nRF24_SetAutoRetr(nRF24_ARD_1000us, 10); // configure auto retransmit: 10 retransmissions with pause of 1000us in between
+	nRF24_EnableAA(nRF24_PIPE0); // enable Auto-ACK for pipe#0 (for ACK packets)
+	nRF24_SetOperationalMode(nRF24_MODE_TX); // switch transceiver to the TX mode
+	nRF24_SetPowerMode(nRF24_PWR_DOWN); // put transceiver to sleep
+	// the nRF24 is ready for transmission, upload a payload, then pull CE pin to HIGH and it will transmit a packet...
+	serial_print("Configured.\r\n");
+
 	return HAL_OK;
 }
 
