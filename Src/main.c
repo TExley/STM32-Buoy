@@ -48,6 +48,15 @@ typedef enum sample_rate
 	SAMPLE_RATE_6_25_HZ = 4,
 	SAMPLE_RATE_5_HZ = 5
 } sample_rate;
+
+typedef enum transmit_size
+{
+	SIZE_REQUIRED_DATA_ONLY = 5,
+	SIZE_SPECTRA_DATA_ONLY = 9,
+	SIZE_VALIDATION_DATA = 10, // required + 5 validation parameters
+	SIZE_SPECTRA_DATA = 13, // required data + other 8 spectra data
+	SIZE_ALL_DATA = 18,
+} transmit_size;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -163,11 +172,15 @@ void calculate_headings(float* zx, float* zy, float* roll, float* pitch, float* 
 void calculate_heave(float* heave, int16_vector3* accel_samples, float* roll, float* pitch, print_option option);
 void co_spectral_density(float* c, float complex* x, float complex* y);
 void quad_spectral_density(float* q, float complex* x, float complex* y);
+void HAL_GPIO_EXTI_Callback(uint16_t pin);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 char str[MAX_PRINT_LENGTH];
+
+transmit_size data_outf_size = SIZE_SPECTRA_DATA;
+float** data_outf;
 /* USER CODE END 0 */
 
 /**
@@ -403,6 +416,26 @@ int main(void)
 		free(Q12p);
 		free(Q13p);
 		/* MAIN PARAMETER CALCULATIONS END */
+
+
+		/* TRANSMIT DATA START */
+		float* temp[SIZE_ALL_DATA] = {NULL, NULL, NULL, NULL, NULL, r1, a1, r2, a2, C11, C22, C33, C23, Q12, C12, Q13, C13, Q23};
+
+		uint8_t offset;
+		if (data_outf_size == SIZE_VALIDATION_DATA || data_outf_size == SIZE_ALL_DATA)
+			offset = 0;
+		else
+			offset = SIZE_VALIDATION_DATA - SIZE_REQUIRED_DATA_ONLY;
+
+		data_outf = malloc(sizeof(float*) * data_outf_size);
+		memcpy(data_outf, temp + offset, data_outf_size);
+
+		nRF24_SetPowerMode(nRF24_PWR_UP); // wake transceiver
+
+		// transmit first piece of data
+
+		// Closing
+		free(C11);
 		free(C12);
 		free(C13);
 		free(Q12);
@@ -411,6 +444,12 @@ int main(void)
 		free(C23);
 		free(C33);
 		free(Q23);
+		free(r1);
+		free(a1);
+		free(r2);
+		free(a2);
+		free(data_outf);
+		/* TRANSMIT DATA END */
 
 		/* USER CODE END WHILE */
 		MX_USB_HOST_Process();
@@ -1158,6 +1197,10 @@ void quad_spectral_density(float* q, float complex* x, float complex* y)
 {
 	for (int i = 0; i < SAMPLE_SIZE; i++)
 		q[i] = 1000 * (cimagf(x[i]) * crealf(y[i]) - crealf(x[i]) * cimagf(y[i])) / (SAMPLE_SIZE * SAMPLE_PERIOD_MS);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t pin)
+{
 }
 /* USER CODE END 4 */
 
