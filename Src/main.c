@@ -57,12 +57,21 @@ typedef enum transmit_size
 	SIZE_SPECTRA_DATA = 13, // required data + other 8 spectra data
 	SIZE_ALL_DATA = 18,
 } transmit_size;
+
+// Result of packet transmission
+typedef enum nRF24_TXResult {
+	nRF24_TX_ERROR  = (uint8_t) 0x00, // Unknown error
+	nRF24_TX_SUCCESS,                // Packet has been transmitted successfully
+	nRF24_TX_TIMEOUT,                // It was timeout during packet transmit
+	nRF24_TX_MAXRT                   // Transmit failed with maximum auto retransmit count
+} nRF24_TXResult;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAXIMUM_PRINT_TIMEOUT 100 // Maximum time-out to wait for any print ACK
+#define MAXIMUM_PRINT_TIMEOUT (uint32_t) 100 // Maximum time-out to wait for any print ACK
 #define MAX_PRINT_LENGTH 100 // Maximum lpuart1 serial data buffer length
+#define TRANSMIT_TIMEOUT (uint32_t) 100 // Maximum time-out to wait for nrf24 interrupt callback
 #define GRAVITY 9.8
 #define GYRO_SAMPLE_RATE_COEFFICIENT 44
 #define GYRO_SAMPLE_RATE_MODIFIER 2 // Gyro samples amples twice as fast as accel
@@ -83,7 +92,7 @@ UART_HandleTypeDef hlpuart1;
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-const uint16_t SAMPLE_SIZE = 1 << 10; // Must be = 2^n where n is an integer
+const uint16_t SAMPLE_SIZE = 1 << 4; // Must be = 2^n where n is an integer
 
 const sample_rate SAMPLE_RATE = SAMPLE_RATE_12_5_HZ;
 // Gyroscope sample rate = 1100 / (1 + value)
@@ -172,7 +181,7 @@ void calculate_headings(float* zx, float* zy, float* roll, float* pitch, float* 
 void calculate_heave(float* heave, int16_vector3* accel_samples, float* roll, float* pitch, print_option option);
 void co_spectral_density(float* c, float complex* x, float complex* y);
 void quad_spectral_density(float* q, float complex* x, float complex* y);
-void HAL_GPIO_EXTI_Callback(uint16_t pin);
+nRF24_TXResult nRF24_TransmitPacket(uint8_t *pBuf, uint8_t length);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -419,20 +428,49 @@ int main(void)
 
 
 		/* TRANSMIT DATA START */
+		// Definitions
 		float* temp[SIZE_ALL_DATA] = {NULL, NULL, NULL, NULL, NULL, r1, a1, r2, a2, C11, C22, C33, C23, Q12, C12, Q13, C13, Q23};
+		uint8_t data_outf_offset;
+		uint32_t packets_lost = 0; // global counter of lost packets
+		uint8_t otx;
+		uint8_t otx_arc_cnt; // retransmit count
+		nRF24_TXResult tx_res;
 
-		uint8_t offset;
+		// Body
 		if (data_outf_size == SIZE_VALIDATION_DATA || data_outf_size == SIZE_ALL_DATA)
-			offset = 0;
+			data_outf_offset = 0;
 		else
-			offset = SIZE_VALIDATION_DATA - SIZE_REQUIRED_DATA_ONLY;
+			data_outf_offset = SIZE_VALIDATION_DATA - SIZE_REQUIRED_DATA_ONLY;
 
 		data_outf = malloc(sizeof(float*) * data_outf_size);
-		memcpy(data_outf, temp + offset, data_outf_size);
+		memcpy(data_outf, temp + data_outf_offset, data_outf_size);
 
+		nRF24_ClearIRQFlags(); // clear any pending IRQ flags
 		nRF24_SetPowerMode(nRF24_PWR_UP); // wake transceiver
 
-		// transmit first piece of data
+		uint8_t data_header[3] = {data_outf_size, SAMPLE_SIZE >> 8, SAMPLE_SIZE & 0b11111111};
+
+		tx_res = nRF24_TransmitPacket(data_header, 3);
+		otx = nRF24_GetRetransmitCounters();
+		otx_arc_cnt  = (otx & nRF24_MASK_ARC_CNT); // auto retransmissions counter
+		switch (tx_res) {
+			case nRF24_TX_SUCCESS:
+				serial_print("OK\r\n");
+				break;
+			case nRF24_TX_TIMEOUT:
+				serial_print("TIMEOUT\r\n");
+				break;
+			case nRF24_TX_MAXRT:
+				serial_print("MAX RETRANSMIT\r\n");
+				packets_lost += (otx & nRF24_MASK_PLOS_CNT) >> 4; // packets lost counter
+				nRF24_ResetPLOS();
+				break;
+			default:
+				serial_print("ERROR\r\n");
+				break;
+		}
+
+		nRF24_SetPowerMode(nRF24_PWR_DOWN);
 
 		// Closing
 		free(C11);
@@ -1199,8 +1237,62 @@ void quad_spectral_density(float* q, float complex* x, float complex* y)
 		q[i] = 1000 * (cimagf(x[i]) * crealf(y[i]) - crealf(x[i]) * cimagf(y[i])) / (SAMPLE_SIZE * SAMPLE_PERIOD_MS);
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t pin)
-{
+// Function to transmit data packet
+// input:
+//   pBuf - pointer to the buffer with data to transmit
+//   length - length of the data buffer in bytes
+// return: one of nRF24_TX_xx values
+nRF24_TXResult nRF24_TransmitPacket(uint8_t *pBuf, uint8_t length) {
+	uint32_t start_time = HAL_GetTick();
+	uint32_t end_time;
+	uint8_t status;
+
+	// Deassert the CE pin (in case if it still high)
+	nRF24_CE_L;
+
+	// Transfer a data from the specified buffer to the TX FIFO
+	nRF24_WritePayload(pBuf, length);
+
+	// Start a transmission by asserting CE pin (must be held at least 10us)
+	nRF24_CE_H;
+
+	// Poll the transceiver status register until one of the following flags will be set:
+	//   TX_DS  - means the packet has been transmitted
+	//   MAX_RT - means the maximum number of TX retransmits happened
+	// note: this solution is far from perfect, better to use IRQ instead of polling the status
+	do {
+		status = nRF24_GetStatus();
+		if (status & (nRF24_FLAG_TX_DS | nRF24_FLAG_MAX_RT)) {
+			break;
+		}
+		end_time = HAL_GetTick() - start_time;
+	} while (end_time < TRANSMIT_TIMEOUT);
+
+	// Deassert the CE pin (Standby-II --> Standby-I)
+	nRF24_CE_L;
+
+	if (end_time >= TRANSMIT_TIMEOUT) {
+		// Timeout
+		return nRF24_TX_TIMEOUT;
+	}
+
+	// Clear pending IRQ flags
+    nRF24_ClearIRQFlags();
+
+	if (status & nRF24_FLAG_MAX_RT) {
+		// Auto retransmit counter exceeds the programmed maximum limit (FIFO is not removed)
+		return nRF24_TX_MAXRT;
+	}
+
+	if (status & nRF24_FLAG_TX_DS) {
+		// Successful transmission
+		return nRF24_TX_SUCCESS;
+	}
+
+	// Some banana happens, a payload remains in the TX FIFO, flush it
+	nRF24_FlushTX();
+
+	return nRF24_TX_ERROR;
 }
 /* USER CODE END 4 */
 
