@@ -165,7 +165,8 @@ const float B_delta = B11 * B22 - B12 * B21;
 
 const uint8_t NRF24_ADDR[] = { 'B', 'o', 'y', '0', '1' }; // The TX address
 const uint8_t NRF24_ADDR_SIZE = 5; // Must in the range 3 - 5
-const uint8_t NRF24_ADDR_CHNL = 1; // Transmits on the frequency of 2400Mhz + this
+const uint8_t NRF24_CHANNEL = 1; // Transmits on the frequency of 2400Mhz + this
+const uint8_t NRF24_HEADER_CHECK = 0b11111111;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -793,7 +794,7 @@ HAL_StatusTypeDef device_init()
 
 
 	serial_print("Configuring nRF24.\r\n");
-	nRF24_SetRFChannel(NRF24_ADDR_CHNL); // set RF channel to 2424MHz
+	nRF24_SetRFChannel(NRF24_CHANNEL); // set RF channel to 2424MHz
 	nRF24_SetDataRate(nRF24_DR_1Mbps); // 1Mbit/s data rate
 	nRF24_SetCRCScheme(nRF24_CRC_2byte); // 2-byte CRC scheme
 	nRF24_SetAddrWidth(NRF24_ADDR_SIZE); // address width is 5 bytes
@@ -1291,14 +1292,17 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 	uint8_t data_buffer[TRANSMIT_SIZE] = { 0 };
 
 	// Create an initial message so the receiver can parse the received data
-	memcpy(data_buffer, &data_outf_size, sizeof(uint8_t));
-	// Bytes [1,4) are currently unused
+	data_buffer[0] = data_outf_size;
+	memcpy(data_buffer + sizeof(uint8_t), &SAMPLE_SIZE, sizeof(uint16_t));
+	data_buffer[3] = NRF24_HEADER_CHECK;
 	memcpy(data_buffer + sizeof(uint32_t), &data_col_start, sizeof(uint32_t));
 	memcpy(data_buffer + sizeof(uint32_t) * 2, &data_col_end, sizeof(uint32_t));
 	memcpy(data_buffer + sizeof(uint32_t) * 3, &HAL_GetTick(), sizeof(uint32_t));
 	// Bytes [16,32) are currently unused
 
 	transmit_packet(data_buffer, TRANSMIT_SIZE);
+
+	data_buffer[3] = 0; // Reset reserved byte 3
 
 	HAL_Delay(TRANSMIT_TIMEOUT); // Make sure the  receiver had time to allocate space
 
@@ -1330,7 +1334,7 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 			// Next part of header is the index for the first float in packet
 			memcpy(data_buffer + 1, &n, sizeof(uint16_t));
 
-			// data_buffer[3] is unused header space
+			// data_buffer[3] is reserved for first message
 
 			transmit_packet(data_buffer, TRANSMIT_SIZE);
 
