@@ -167,6 +167,7 @@ const uint8_t NRF24_ADDR[] = { 'B', 'o', 'y', '0', '1' }; // The TX address
 const uint8_t NRF24_ADDR_SIZE = 5; // Must in the range 3 - 5
 const uint8_t NRF24_CHANNEL = 1; // Transmits on the frequency of 2400Mhz + this
 const uint8_t NRF24_HEADER_CHECK = 0b11111111;
+const uint8_t NRF24_CHECK_BIT = 3;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -271,9 +272,9 @@ int main(void)
 
 		// Body
 		serial_print("Data collection starting.\r\n");
-		data_col_start = HAL_GetTick();
+		uint32_t data_col_start = HAL_GetTick();
 		collect_samples(accel_samples, wx, wy, wz, bx, by, DONT_PRINT);
-		data_col_end = HAL_GetTick();
+		uint32_t data_col_end = HAL_GetTick();
 		sprintf(str, "Data collection done in %lums.\r\n\r\n", data_col_end - data_col_start);
 		serial_print(str);
 		/* DATA COLLECTION END */
@@ -1294,10 +1295,11 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 	// Create an initial message so the receiver can parse the received data
 	data_buffer[0] = data_outf_size;
 	memcpy(data_buffer + sizeof(uint8_t), &SAMPLE_SIZE, sizeof(uint16_t));
-	data_buffer[3] = NRF24_HEADER_CHECK;
+	data_buffer[NRF24_CHECK_BIT] = NRF24_HEADER_CHECK;
 	memcpy(data_buffer + sizeof(uint32_t), &data_col_start, sizeof(uint32_t));
 	memcpy(data_buffer + sizeof(uint32_t) * 2, &data_col_end, sizeof(uint32_t));
-	memcpy(data_buffer + sizeof(uint32_t) * 3, &HAL_GetTick(), sizeof(uint32_t));
+	uint32_t ctime = HAL_GetTick();
+	memcpy(data_buffer + sizeof(uint32_t) * 3, &ctime, sizeof(uint32_t));
 	// Bytes [16,32) are currently unused
 
 	transmit_packet(data_buffer, TRANSMIT_SIZE);
@@ -1309,15 +1311,13 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 	// Transmit packets of data for each array in data_outf_size
 	for (uint8_t i = 0; i < data_outf_size; i++)
 	{
-		uint8_t data_array_id = i << 3; // data_outf_size is at most 18 so only 5 bits are used
-
 		uint16_t n = 0; // first index of data_outf[i] for this packet
 		do
 		{
 			uint16_t j = 0; // index offset for n
 			do
 			{
-				// Converts float to uint23_t
+				// Converts float to uint32_t
 				uint32_t *bits = (uint32_t *) &(data_outf[i][n + j]);
 				j++; // dual purpose as a counter for floats in packets now
 
@@ -1329,7 +1329,7 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 
 			// Add an additional header for packet where first 5 bits say which array
 			// and last 3 bits say number of valid floats in packet
-			data_buffer[0] = data_array_id + j;
+			data_buffer[0] = i << 3 + j; // data_outf_size is at most 18 so only 5 bits are used for i
 
 			// Next part of header is the index for the first float in packet
 			memcpy(data_buffer + 1, &n, sizeof(uint16_t));
@@ -1340,6 +1340,7 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 
 			n += j; // Update n to first index of next packet's data
 		} while (n < SAMPLE_SIZE);
+		HAL_Delay(MAXIMUM_PRINT_TIMEOUT); // Give time for the receiver to print status message
 	}
 
 	nRF24_SetPowerMode(nRF24_PWR_DOWN);
