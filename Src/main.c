@@ -442,20 +442,15 @@ int main(void)
 		// Definitions
 		// NULL variables are possible future data validation terms
 		// Designed this way to allow for future changes to data sent
-		float* temp[SIZE_ALL_DATA] = {NULL, NULL, NULL, NULL, NULL, r1, a1, r2, a2, C11, C22, C33, C23, Q12, C12, Q13, C13, Q23};
+		float* data_outf[SIZE_ALL_DATA] = {NULL, NULL, NULL, NULL, NULL, r1, a1, r2, a2, C11, C22, C33, C23, Q12, C12, Q13, C13, Q23};
 		uint8_t data_outf_offset;
-
 		if (data_outf_size == SIZE_VALIDATION_DATA || data_outf_size == SIZE_ALL_DATA)
 			data_outf_offset = 0;
 		else
 			data_outf_offset = SIZE_VALIDATION_DATA - SIZE_REQUIRED_DATA_ONLY;
 
-		float** data_outf = malloc(sizeof(float*) * data_outf_size);
-		memcpy(data_outf, temp + data_outf_offset, data_outf_size);
-
 		// Body
-		transmit_data(data_outf, data_outf_size, data_col_start, data_col_end);
-
+		transmit_data(data_outf + data_outf_offset, data_outf_size, data_col_start, data_col_end);
 
 		// Closing
 		free(C11);
@@ -471,7 +466,6 @@ int main(void)
 		free(a1);
 		free(r2);
 		free(a2);
-		free(data_outf);
 		/* TRANSMIT DATA END */
 
 		/* USER CODE END WHILE */
