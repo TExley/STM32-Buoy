@@ -74,7 +74,7 @@ typedef enum nRF24_TXResult {
 #define NRF24_WAKE_DELAY (uint32_t) 100
 #define TRANSMIT_TIMEOUT (uint32_t) 500 // Maximum time-out to wait for nrf24 interrupt callback
 #define TRANSMIT_SIZE (uint8_t) 32 // Number of bytes to send in one packet
-#define TRANSMIT_PACKET_DATA_LIMIT (uint8_t) TRANSMIT_SIZE / sizeof(float)
+#define TRANSMIT_PACKET_DATA_LIMIT (uint8_t) TRANSMIT_SIZE / sizeof(float) - 1 // Space for packet data - header
 #define TRANSMIT_RETRYS (uint8_t) 5 // Number of times to wait and try to save packet
 #define TRANSMIT_RETRY_DELAY (uint8_t) 500 // Delay between packet send attempts
 #define GRAVITY 9.8
@@ -1314,7 +1314,7 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 		uint16_t n = 0; // first index of data_outf[i] for this packet
 		do
 		{
-			uint16_t j = 0; // index offset for n
+			uint8_t j = 0; // index offset for n
 			do
 			{
 				// Converts float to uint32_t
@@ -1329,7 +1329,7 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 
 			// Add an additional header for packet where first 5 bits say which array
 			// and last 3 bits say number of valid floats in packet
-			data_buffer[0] = i << 3 + j; // data_outf_size is at most 18 so only 5 bits are used for i
+			data_buffer[0] = (i << 3) + j; // data_outf_size is at most 18 so only 5 bits are used for i
 
 			// Next part of header is the index for the first float in packet
 			memcpy(data_buffer + 1, &n, sizeof(uint16_t));
