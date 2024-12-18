@@ -72,7 +72,7 @@ typedef enum nRF24_TXResult {
 #define MAXIMUM_PRINT_TIMEOUT (uint32_t) 100 // Maximum time-out to wait for any print ACK
 #define MAX_PRINT_LENGTH 100 // Maximum lpuart1 serial data buffer length
 #define NRF24_WAKE_DELAY (uint32_t) 100
-#define TRANSMIT_TIMEOUT (uint32_t) 500 // Maximum time-out to wait for nrf24 interrupt callback
+#define TRANSMIT_TIMEOUT (uint32_t) 5000 // Maximum time-out to wait for nrf24 interrupt callback
 #define TRANSMIT_SIZE (uint8_t) 32 // Number of bytes to send in one packet
 #define TRANSMIT_PACKET_DATA_LIMIT (uint8_t) TRANSMIT_SIZE / sizeof(float) - 1 // Space for packet data - header
 #define TRANSMIT_RETRYS (uint8_t) 5 // Number of times to wait and try to save packet
