@@ -98,7 +98,7 @@ UART_HandleTypeDef hlpuart1;
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-const uint16_t SAMPLE_SIZE = 1 << 4; // Must be = 2^n where n is an integer
+const uint16_t SAMPLE_SIZE = 1 << 7; // Must be = 2^n where n is an integer
 
 const sample_rate SAMPLE_RATE = SAMPLE_RATE_12_5_HZ;
 // Gyroscope sample rate = 1100 / (1 + value)
@@ -201,7 +201,7 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 /* USER CODE BEGIN 0 */
 char str[MAX_PRINT_LENGTH];
 
-transmit_size data_outf_size = SIZE_SPECTRA_DATA;
+transmit_size data_outf_size = SIZE_REQUIRED_DATA_ONLY; // Might add ability to change through transceiver
 /* USER CODE END 0 */
 
 /**
