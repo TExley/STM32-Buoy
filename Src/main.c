@@ -72,7 +72,8 @@ typedef enum nRF24_TXResult {
 #define MAXIMUM_PRINT_TIMEOUT (uint32_t) 100 // Maximum time-out to wait for any print ACK
 #define MAX_PRINT_LENGTH 100 // Maximum lpuart1 serial data buffer length
 #define NRF24_WAKE_DELAY (uint32_t) 100
-#define TRANSMIT_TIMEOUT (uint32_t) 5000 // Maximum time-out to wait for nrf24 interrupt callback
+#define TRANSMIT_DELAY (uint32_t) 25 // Delay between each transmit
+#define TRANSMIT_TIMEOUT (uint32_t) 10000 // Maximum time-out to wait for nrf24 interrupt callback
 #define TRANSMIT_SIZE (uint8_t) 32 // Number of bytes to send in one packet
 #define TRANSMIT_PACKET_DATA_LIMIT (uint8_t) TRANSMIT_SIZE / sizeof(float) - 1 // Space for packet data - header
 #define TRANSMIT_RETRYS (uint8_t) 5 // Number of times to wait and try to save packet
@@ -1329,13 +1330,15 @@ void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t dat
 			memcpy(data_buffer + 1, &n, sizeof(uint16_t));
 
 			// data_buffer[3] is reserved for first message
-
+			HAL_Delay(TRANSMIT_DELAY);
 			transmit_packet(data_buffer, TRANSMIT_SIZE);
 
 			n += j; // Update n to first index of next packet's data
 		} while (n < SAMPLE_SIZE);
 		HAL_Delay(MAXIMUM_PRINT_TIMEOUT); // Give time for the receiver to print status message
 	}
+
+	HAL_Delay(TRANSMIT_TIMEOUT);
 
 	nRF24_SetPowerMode(nRF24_PWR_DOWN);
 }
