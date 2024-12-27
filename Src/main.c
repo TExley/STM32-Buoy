@@ -346,6 +346,8 @@ int main(void)
 		float complex* zy_f = (float complex*) malloc(sizeof(float complex) * SAMPLE_SIZE); // East deck slope wrt. freq.
 
 		// Body
+		serial_print("FFT calculation starting.\r\n");
+		timeit = HAL_GetTick();
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
 			heave_f[i] = heave[i];
@@ -356,6 +358,10 @@ int main(void)
 		fft(heave_f, SAMPLE_SIZE);
 		fft(zx_f, SAMPLE_SIZE);
 		fft(zy_f, SAMPLE_SIZE);
+
+		timeit = HAL_GetTick() - timeit;
+		sprintf(str, "FFT calculation done in %lums\r\n\r\n", timeit);
+		serial_print(str);
 
 		// Closing
 		free(heave);
@@ -374,6 +380,9 @@ int main(void)
 		Q13 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
 		// Body 1
+		serial_print("Spectral density calculation starting.\r\n");
+		timeit = HAL_GetTick();
+
 		co_spectral_density(C11, heave_f, heave_f);
 		co_spectral_density(C12, heave_f, zx_f);
 		co_spectral_density(C13, heave_f, zy_f);
@@ -395,6 +404,10 @@ int main(void)
 		co_spectral_density(C33, zy_f, zy_f);
 		quad_spectral_density(Q23, zx_f, zy_f);
 
+		timeit = HAL_GetTick() - timeit;
+		sprintf(str, "Spectral density calculation done in %lums\r\n\r\n", timeit);
+		serial_print(str);
+
 		// Closing 2
 		free(zx_f);
 		free(zy_f);
@@ -408,11 +421,16 @@ int main(void)
 		float* Q13p = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
 		// Body
+		serial_print("Spectral adjustment starting.\r\n");
+		timeit = HAL_GetTick();
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
 			Q12p[i] = Q12[i]*cosf(p) + C12[i]*sinf(p);
 			Q13p[i] = Q13[i]*cosf(p) + C13[i]*sinf(p);
 		}
+		timeit = HAL_GetTick() - timeit;
+		sprintf(str, "Spectral adjustment done in %lums\r\n\r\n", timeit);
+		serial_print(str);
 		/* CO&QUAD-SPECTRAL DENSITY ADJUSTMENTS END */
 
 
@@ -424,6 +442,9 @@ int main(void)
 		float* a2 = (float*) malloc(sizeof(float) * SAMPLE_SIZE);
 
 		// Body
+		serial_print("Main spectral parameter calculations starting.\r\n");
+		timeit = HAL_GetTick();
+
 		for (int i = 0; i < SAMPLE_SIZE; i++)
 		{
 			r1[i] = powf((Q12p[i] * Q12p[i] + Q13p[i] * Q13p[i]) / (C11[i] * (C22[i] + C33[i])), 0.5f);
@@ -432,6 +453,10 @@ int main(void)
 			a2[i] = -M_3PI2 - 0.5f * atan2f(2 * C23[i], C22[i] - C33[i]); // + either 0 or pi...
 			// ??? whichever makes the angle between a1 and a2 ???
 		}
+
+		timeit = HAL_GetTick() - timeit;
+		sprintf(str, "Main spectral parameter calculations done in %lums\r\n\r\n", timeit);
+		serial_print(str);
 
 		// Closing
 		free(Q12p);
@@ -451,7 +476,12 @@ int main(void)
 			data_outf_offset = SIZE_VALIDATION_DATA - SIZE_REQUIRED_DATA_ONLY;
 
 		// Body
+		serial_print("Data transmission starting.\r\n");
+		timeit = HAL_GetTick();
 		transmit_data(data_outf + data_outf_offset, data_outf_size, data_col_start, data_col_end);
+		timeit = HAL_GetTick() - timeit;
+		sprintf(str, "Data transmission done in %lums\r\n\r\n", timeit);
+		serial_print(str);
 
 		// Closing
 		free(C11);
