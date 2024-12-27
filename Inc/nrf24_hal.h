@@ -33,7 +33,7 @@
 #define nRF24_RX_ON                nRF24_CE_H
 #define nRF24_RX_OFF               nRF24_CE_L
 
-#define nRF24_SPI_TIMEOUT          20
+#define nRF24_SPI_TIMEOUT          (uint32_t) 20
 
 // Function prototypes
 void nRF24_HAL_Init(SPI_HandleTypeDef* hspi);

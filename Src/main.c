@@ -57,12 +57,27 @@ typedef enum transmit_size
 	SIZE_SPECTRA_DATA = 13, // required data + other 8 spectra data
 	SIZE_ALL_DATA = 18,
 } transmit_size;
+
+// Result of packet transmission
+typedef enum nRF24_TXResult {
+	nRF24_TX_ERROR  = (uint8_t) 0x00, // Unknown error
+	nRF24_TX_SUCCESS,                // Packet has been transmitted successfully
+	nRF24_TX_TIMEOUT,                // It was timeout during packet transmit
+	nRF24_TX_MAXRT                   // Transmit failed with maximum auto retransmit count
+} nRF24_TXResult;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAXIMUM_PRINT_TIMEOUT 100 // Maximum time-out to wait for any print ACK
+#define MAXIMUM_PRINT_TIMEOUT (uint32_t) 100 // Maximum time-out to wait for any print ACK
 #define MAX_PRINT_LENGTH 100 // Maximum lpuart1 serial data buffer length
+#define NRF24_WAKE_DELAY (uint32_t) 100
+#define TRANSMIT_DELAY (uint32_t) 25 // Delay between each transmit
+#define TRANSMIT_TIMEOUT (uint32_t) 10000 // Maximum time-out to wait for nrf24 interrupt callback
+#define TRANSMIT_SIZE (uint8_t) 32 // Number of bytes to send in one packet
+#define TRANSMIT_PACKET_DATA_LIMIT (uint8_t) TRANSMIT_SIZE / sizeof(float) - 1 // Space for packet data - header
+#define TRANSMIT_RETRYS (uint8_t) 5 // Number of times to wait and try to save packet
+#define TRANSMIT_RETRY_DELAY (uint8_t) 500 // Delay between packet send attempts
 #define GRAVITY 9.8
 #define GYRO_SAMPLE_RATE_COEFFICIENT 44
 #define GYRO_SAMPLE_RATE_MODIFIER 2 // Gyro samples amples twice as fast as accel
@@ -83,7 +98,7 @@ UART_HandleTypeDef hlpuart1;
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-const uint16_t SAMPLE_SIZE = 1 << 10; // Must be = 2^n where n is an integer
+const uint16_t SAMPLE_SIZE = 1 << 4; // Must be = 2^n where n is an integer
 
 const sample_rate SAMPLE_RATE = SAMPLE_RATE_12_5_HZ;
 // Gyroscope sample rate = 1100 / (1 + value)
@@ -148,6 +163,12 @@ const float B10 = -2.21720753, // residual hull magnetic effect (bow) 0
     B22 = 1.07178173; // induced hull magnetic effect (starboard) 1
 
 const float B_delta = B11 * B22 - B12 * B21;
+
+const uint8_t NRF24_ADDR[] = { 'B', 'o', 'y', '0', '1' }; // The TX address
+const uint8_t NRF24_ADDR_SIZE = 5; // Must in the range 3 - 5
+const uint8_t NRF24_CHANNEL = 1; // Transmits on the frequency of 2400Mhz + this
+const uint8_t NRF24_HEADER_CHECK = 0b11111111;
+const uint8_t NRF24_CHECK_BIT = 3;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -172,7 +193,8 @@ void calculate_headings(float* zx, float* zy, float* roll, float* pitch, float* 
 void calculate_heave(float* heave, int16_vector3* accel_samples, float* roll, float* pitch, print_option option);
 void co_spectral_density(float* c, float complex* x, float complex* y);
 void quad_spectral_density(float* q, float complex* x, float complex* y);
-void HAL_GPIO_EXTI_Callback(uint16_t pin);
+nRF24_TXResult transmit_packet(uint8_t *pBuf, uint8_t length);
+void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t data_col_start, uint32_t data_col_end);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -180,7 +202,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin);
 char str[MAX_PRINT_LENGTH];
 
 transmit_size data_outf_size = SIZE_SPECTRA_DATA;
-float** data_outf;
 /* USER CODE END 0 */
 
 /**
@@ -252,10 +273,10 @@ int main(void)
 
 		// Body
 		serial_print("Data collection starting.\r\n");
-		timeit = HAL_GetTick();
+		uint32_t data_col_start = HAL_GetTick();
 		collect_samples(accel_samples, wx, wy, wz, bx, by, DONT_PRINT);
-		timeit = HAL_GetTick() - timeit;
-		sprintf(str, "Data collection done in %lums.\r\n\r\n", timeit);
+		uint32_t data_col_end = HAL_GetTick();
+		sprintf(str, "Data collection done in %lums.\r\n\r\n", data_col_end - data_col_start);
 		serial_print(str);
 		/* DATA COLLECTION END */
 
@@ -419,20 +440,18 @@ int main(void)
 
 
 		/* TRANSMIT DATA START */
-		float* temp[SIZE_ALL_DATA] = {NULL, NULL, NULL, NULL, NULL, r1, a1, r2, a2, C11, C22, C33, C23, Q12, C12, Q13, C13, Q23};
-
-		uint8_t offset;
+		// Definitions
+		// NULL variables are possible future data validation terms
+		// Designed this way to allow for future changes to data sent
+		float* data_outf[SIZE_ALL_DATA] = {NULL, NULL, NULL, NULL, NULL, r1, a1, r2, a2, C11, C22, C33, C23, Q12, C12, Q13, C13, Q23};
+		uint8_t data_outf_offset;
 		if (data_outf_size == SIZE_VALIDATION_DATA || data_outf_size == SIZE_ALL_DATA)
-			offset = 0;
+			data_outf_offset = 0;
 		else
-			offset = SIZE_VALIDATION_DATA - SIZE_REQUIRED_DATA_ONLY;
+			data_outf_offset = SIZE_VALIDATION_DATA - SIZE_REQUIRED_DATA_ONLY;
 
-		data_outf = malloc(sizeof(float*) * data_outf_size);
-		memcpy(data_outf, temp + offset, data_outf_size);
-
-		nRF24_SetPowerMode(nRF24_PWR_UP); // wake transceiver
-
-		// transmit first piece of data
+		// Body
+		transmit_data(data_outf + data_outf_offset, data_outf_size, data_col_start, data_col_end);
 
 		// Closing
 		free(C11);
@@ -448,7 +467,6 @@ int main(void)
 		free(a1);
 		free(r2);
 		free(a2);
-		free(data_outf);
 		/* TRANSMIT DATA END */
 
 		/* USER CODE END WHILE */
@@ -772,19 +790,17 @@ HAL_StatusTypeDef device_init()
 
 
 	serial_print("Configuring nRF24.\r\n");
-	uint8_t ADDR[] = { 'n', 'R', 'F', '2', '4' }; // the TX address
-	nRF24_SetRFChannel(24); // set RF channel to 2424MHz
+	nRF24_SetRFChannel(NRF24_CHANNEL); // set RF channel to 2424MHz
 	nRF24_SetDataRate(nRF24_DR_1Mbps); // 1Mbit/s data rate
 	nRF24_SetCRCScheme(nRF24_CRC_2byte); // 2-byte CRC scheme
-	nRF24_SetAddrWidth(5); // address width is 5 bytes
-	nRF24_SetAddr(nRF24_PIPETX, ADDR); // program TX address
-	nRF24_SetAddr(nRF24_PIPE0, ADDR); // program pipe#0 RX address, must be same as TX (for ACK packets)
+	nRF24_SetAddrWidth(NRF24_ADDR_SIZE); // address width is 5 bytes
+	nRF24_SetAddr(nRF24_PIPETX, NRF24_ADDR); // program TX address
+	nRF24_SetAddr(nRF24_PIPE0, NRF24_ADDR); // program pipe#0 RX address, must be same as TX (for ACK packets)
 	nRF24_SetTXPower(nRF24_TXPWR_0dBm); // configure TX power
-	nRF24_SetAutoRetr(nRF24_ARD_1000us, 10); // configure auto retransmit: 10 retransmissions with pause of 1000us in between
+	nRF24_SetAutoRetr(nRF24_ARD_500us, 10); // configure auto retransmit: 10 retransmissions with pause of 500s in between
 	nRF24_EnableAA(nRF24_PIPE0); // enable Auto-ACK for pipe#0 (for ACK packets)
 	nRF24_SetOperationalMode(nRF24_MODE_TX); // switch transceiver to the TX mode
-	nRF24_SetPowerMode(nRF24_PWR_DOWN); // put transceiver to sleep
-	// the nRF24 is ready for transmission, upload a payload, then pull CE pin to HIGH and it will transmit a packet...
+	nRF24_SetPowerMode(nRF24_PWR_DOWN); // sleep transceiver
 	serial_print("Configured.\r\n");
 
 	return HAL_OK;
@@ -1199,8 +1215,132 @@ void quad_spectral_density(float* q, float complex* x, float complex* y)
 		q[i] = 1000 * (cimagf(x[i]) * crealf(y[i]) - crealf(x[i]) * cimagf(y[i])) / (SAMPLE_SIZE * SAMPLE_PERIOD_MS);
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t pin)
+// Function to transmit data packet
+// input:
+//   pBuf - pointer to the buffer with data to transmit
+//   length - length of the data buffer in bytes
+// return: one of nRF24_TX_xx values
+nRF24_TXResult transmit_packet(uint8_t *pBuf, uint8_t length) {
+	uint32_t start_time = HAL_GetTick();
+	uint32_t end_time;
+	uint8_t status;
+
+	// Deassert the CE pin (in case if it still high)
+	nRF24_CE_L;
+
+	// Transfer a data from the specified buffer to the TX FIFO
+	nRF24_WritePayload(pBuf, length);
+
+	// Start a transmission by asserting CE pin (must be held at least 10us)
+	nRF24_CE_H;
+
+	// Poll the transceiver status register until one of the following flags will be set:
+	//   TX_DS  - means the packet has been transmitted
+	//   MAX_RT - means the maximum number of TX retransmits happened
+	// note: this solution is far from perfect, better to use IRQ instead of polling the status
+	do {
+		status = nRF24_GetStatus();
+		if (status & (nRF24_FLAG_TX_DS | nRF24_FLAG_MAX_RT)) {
+			break;
+		}
+		end_time = HAL_GetTick() - start_time;
+	} while (end_time < TRANSMIT_TIMEOUT);
+
+	// Deassert the CE pin (Standby-II --> Standby-I)
+	nRF24_CE_L;
+
+	if (end_time >= TRANSMIT_TIMEOUT) {
+		// Timeout
+		return nRF24_TX_TIMEOUT;
+	}
+
+	// Clear pending IRQ flags
+    nRF24_ClearIRQFlags();
+
+	if (status & nRF24_FLAG_MAX_RT) {
+		// Auto retransmit counter exceeds the programmed maximum limit (FIFO is not removed)
+		return nRF24_TX_MAXRT;
+	}
+
+	if (status & nRF24_FLAG_TX_DS) {
+		// Successful transmission
+		return nRF24_TX_SUCCESS;
+	}
+
+	// Some banana happens, a payload remains in the TX FIFO, flush it
+	nRF24_FlushTX();
+
+	return nRF24_TX_ERROR;
+}
+
+/**
+  * @brief  Transmits the data collected and processed to a listening transceiver.
+  * @param  data_outf: a list of arrays to be transmitted
+  * @param  data_outf_size: number of arrays in transmited data
+  * @retval None
+ */
+void transmit_data(float** data_outf, transmit_size data_outf_size, uint32_t data_col_start, uint32_t data_col_end)
 {
+	nRF24_SetPowerMode(nRF24_PWR_UP);
+	HAL_Delay(NRF24_WAKE_DELAY); // Using power ramp up time just to be safe
+	nRF24_ClearIRQFlags(); // clear any pending IRQ flags
+
+	uint8_t data_buffer[TRANSMIT_SIZE] = { 0 };
+
+	// Create an initial message so the receiver can parse the received data
+	data_buffer[0] = data_outf_size;
+	memcpy(data_buffer + sizeof(uint8_t), &SAMPLE_SIZE, sizeof(uint16_t));
+	data_buffer[NRF24_CHECK_BIT] = NRF24_HEADER_CHECK;
+	memcpy(data_buffer + sizeof(uint32_t), &data_col_start, sizeof(uint32_t));
+	memcpy(data_buffer + sizeof(uint32_t) * 2, &data_col_end, sizeof(uint32_t));
+	uint32_t ctime = HAL_GetTick();
+	memcpy(data_buffer + sizeof(uint32_t) * 3, &ctime, sizeof(uint32_t));
+	// Bytes [16,32) are currently unused
+
+	transmit_packet(data_buffer, TRANSMIT_SIZE);
+
+	data_buffer[3] = 0; // Reset reserved byte 3
+
+	HAL_Delay(TRANSMIT_TIMEOUT); // Make sure the  receiver had time to allocate space
+
+	// Transmit packets of data for each array in data_outf_size
+	for (uint8_t i = 0; i < data_outf_size; i++)
+	{
+		uint16_t n = 0; // first index of data_outf[i] for this packet
+		do
+		{
+			uint8_t j = 0; // index offset for n
+			do
+			{
+				// Converts float to uint32_t
+				uint32_t *bits = (uint32_t *) &(data_outf[i][n + j]);
+				j++; // dual purpose as a counter for floats in packets now
+
+				// Copy float into data_buffer
+				memcpy(data_buffer + sizeof(float) * j, bits, sizeof(float));
+
+			// Limited to TRANSMIT_PACKET_DATA_LIMIT - 1 floats for extra header data
+			} while (j < TRANSMIT_PACKET_DATA_LIMIT && j + n < SAMPLE_SIZE);
+
+			// Add an additional header for packet where first 5 bits say which array
+			// and last 3 bits say number of valid floats in packet
+			data_buffer[0] = (i << 3) + j; // data_outf_size is at most 18 so only 5 bits are used for i
+
+			// Next part of header is the index for the first float in packet
+			memcpy(data_buffer + 1, &n, sizeof(uint16_t));
+
+			// data_buffer[3] is reserved for first message
+			HAL_Delay(TRANSMIT_DELAY);
+			transmit_packet(data_buffer, TRANSMIT_SIZE);
+
+			n += j; // Update n to first index of next packet's data
+		} while (n < SAMPLE_SIZE);
+		HAL_Delay(MAXIMUM_PRINT_TIMEOUT); // Give time for the receiver to print status message
+	}
+
+	HAL_Delay(TRANSMIT_TIMEOUT);
+
+	nRF24_SetPowerMode(nRF24_PWR_DOWN);
 }
 /* USER CODE END 4 */
 
